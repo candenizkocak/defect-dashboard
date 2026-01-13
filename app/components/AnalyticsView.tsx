@@ -1,3 +1,4 @@
+// app/components/AnalyticsView.tsx
 import React, { useEffect, useRef, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
@@ -5,17 +6,18 @@ import {
 } from 'recharts';
 import { 
   Layers, Activity, AlertOctagon, CheckCircle2, 
-  Plus, Minus, RefreshCw 
+  Plus, Minus, RefreshCw, FileDown 
 } from 'lucide-react';
-import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch"; // <--- Import
+import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
 import { BatchItem } from '../types';
 import { DEFECT_COLORS } from '../constants';
+import { generatePDFReport } from '../utils/reportGenerator';
 
 interface AnalyticsViewProps {
   batch: BatchItem[];
 }
 
-// Reuse the zoom controls UI
+// Internal Zoom Controls Component
 const HeatmapZoomControls = () => {
   const { zoomIn, zoomOut, resetTransform } = useControls();
   return (
@@ -112,13 +114,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ batch }) => {
 
         const drawX = nx * w;
         const drawY = ny * h;
-        const drawW = Math.max(nw * w, 4); 
-        const drawH = Math.max(nh * h, 4); 
+        const drawW = Math.max(nw * w, 4); // Min 4px
+        const drawH = Math.max(nh * h, 4); // Min 4px
 
         ctx.shadowColor = "rgba(239, 68, 68, 0.5)";
         ctx.shadowBlur = 10;
 
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.35)'; 
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.35)'; // 35% Opacity
         ctx.fillRect(drawX, drawY, drawW, drawH);
         
         ctx.shadowBlur = 0; 
@@ -184,13 +186,23 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ batch }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Heatmap Section with Zoom */}
+        {/* Heatmap Section */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-            <h3 className="text-base font-bold text-slate-800 mb-1">Spatial Heatmap</h3>
+            <div className="flex items-center justify-between mb-1">
+                <h3 className="text-base font-bold text-slate-800">Spatial Heatmap</h3>
+                
+                {/* PDF Export Button */}
+                <button 
+                   onClick={() => generatePDFReport(batch, canvasRef.current)}
+                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-medium hover:bg-slate-700 transition-colors shadow-sm active:scale-95"
+                >
+                   <FileDown className="w-3.5 h-3.5" /> Export PDF Report
+                </button>
+            </div>
             <p className="text-xs text-slate-500 mb-6">Cumulative view of all defect locations.</p>
             
             <div className="flex-grow bg-slate-50 rounded-lg border border-slate-100 relative overflow-hidden flex items-center justify-center min-h-[400px]">
-                {/* --- ZOOM WRAPPER START --- */}
+                {/* --- ZOOM WRAPPER --- */}
                 <TransformWrapper initialScale={1} minScale={1} maxScale={8}>
                     <HeatmapZoomControls />
                     <TransformComponent wrapperClass="!w-full !h-full flex items-center justify-center" contentClass="!w-full !h-full flex items-center justify-center">
@@ -201,13 +213,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ batch }) => {
                                 height={800} 
                                 className="w-full h-full object-contain rounded-md shadow-sm bg-white"
                             />
-                            {/* Axis Labels inside zoom area so they scale */}
+                            {/* Labels */}
                             <div className="absolute -left-6 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] text-slate-400 font-mono tracking-widest pointer-events-none">VERTICAL</div>
                             <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] text-slate-400 font-mono tracking-widest pointer-events-none">HORIZONTAL</div>
                         </div>
                     </TransformComponent>
                 </TransformWrapper>
-                {/* --- ZOOM WRAPPER END --- */}
             </div>
         </div>
 
