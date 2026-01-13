@@ -1,32 +1,45 @@
 // app/components/MainStage.tsx
-import React, { useImperativeHandle, useRef } from 'react';
+import React, { useImperativeHandle, useRef, useState } from 'react';
 import { TransformWrapper, TransformComponent, useControls, ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { Plus, Minus, RefreshCw, Layers } from 'lucide-react';
 import { BatchItem } from '../types';
 import { DEFECT_COLORS } from '../constants';
+import { ImageToolbar, ImageFilters } from './ImageToolbar';
 
 // --- Internal Zoom Controls ---
 const ZoomControls = () => {
   const { zoomIn, zoomOut, resetTransform } = useControls();
   return (
     <div className="absolute bottom-4 right-4 flex gap-2 z-10">
-      <button onClick={() => zoomIn()} className="p-2 bg-white/90 shadow-md rounded-lg hover:bg-gray-50 text-slate-700 transition-transform active:scale-95">
+      <button 
+        onClick={() => zoomIn()} 
+        className="p-2 bg-white/90 shadow-md rounded-lg hover:bg-gray-50 text-slate-700 transition-transform active:scale-95"
+        title="Zoom In"
+      >
         <Plus className="w-4 h-4" />
       </button>
-      <button onClick={() => zoomOut()} className="p-2 bg-white/90 shadow-md rounded-lg hover:bg-gray-50 text-slate-700 transition-transform active:scale-95">
+      <button 
+        onClick={() => zoomOut()} 
+        className="p-2 bg-white/90 shadow-md rounded-lg hover:bg-gray-50 text-slate-700 transition-transform active:scale-95"
+        title="Zoom Out"
+      >
         <Minus className="w-4 h-4" />
       </button>
-      <button onClick={() => resetTransform()} className="p-2 bg-white/90 shadow-md rounded-lg hover:bg-gray-50 text-slate-700 transition-transform active:scale-95">
+      <button 
+        onClick={() => resetTransform()} 
+        className="p-2 bg-white/90 shadow-md rounded-lg hover:bg-gray-50 text-slate-700 transition-transform active:scale-95"
+        title="Reset View"
+      >
         <RefreshCw className="w-4 h-4" />
       </button>
     </div>
   );
 };
 
-// --- Props & Ref Interface ---
+// --- Types ---
 interface MainStageProps {
   item: BatchItem | null;
-  highlightedIndex: number | null; // <--- New prop to know which one is active
+  highlightedIndex: number | null;
 }
 
 export interface MainStageRef {
@@ -37,28 +50,35 @@ export interface MainStageRef {
 export const MainStage = React.forwardRef<MainStageRef, MainStageProps>(({ item, highlightedIndex }, ref) => {
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
 
-  // Expose the zoom function to the parent
+  // --- Filter State ---
+  const [filters, setFilters] = useState<ImageFilters>({
+    brightness: 100,
+    contrast: 100,
+    invert: false,
+    grayscale: false
+  });
+
+  // --- Expose Zoom Method to Parent ---
   useImperativeHandle(ref, () => ({
     zoomToBox: (box: [number, number, number, number]) => {
       if (!transformRef.current) return;
       
       const [x1, y1, x2, y2] = box;
       
-      // Calculate center of defect
-      const cx = x1 + (x2 - x1) / 2;
-      const cy = y1 + (y2 - y1) / 2;
-      
-      // Zoom logic
-      // We zoom in (scale 2.5 is usually good for inspection) and center on the point
-      // The library handles the math of converting image coordinates to viewport coordinates
+      // Zoom logic: Scale 2.5x and center on the specific HTML element ID
       transformRef.current.zoomToElement(
-        `defect-box-${x1}-${y1}`, // We will add this ID to the SVG rects
-        2.5, // Scale factor
-        500, // Animation duration (ms)
+        `defect-box-${x1}-${y1}`, 
+        2.5, 
+        500, 
         "easeOutQuad"
       );
     }
   }));
+
+  // Helper to generate CSS string for filters
+  const getFilterStyle = () => {
+    return `brightness(${filters.brightness}%) contrast(${filters.contrast}%) invert(${filters.invert ? 1 : 0}) grayscale(${filters.grayscale ? 1 : 0})`;
+  };
 
   if (!item) {
     return (
@@ -73,6 +93,10 @@ export const MainStage = React.forwardRef<MainStageRef, MainStageProps>(({ item,
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm relative min-h-[500px] flex items-center justify-center bg-slate-50">
+      
+      {/* --- Image Enhancement Toolbar --- */}
+      <ImageToolbar filters={filters} setFilters={setFilters} />
+
       <TransformWrapper 
         ref={transformRef}
         initialScale={1} 
@@ -83,9 +107,16 @@ export const MainStage = React.forwardRef<MainStageRef, MainStageProps>(({ item,
         <ZoomControls />
         <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full">
           <div className="relative w-full h-full">
-            <img src={item.src} alt="Inspection Target" className="w-full h-auto object-contain max-h-[700px]" />
             
-            {/* SVG Overlay */}
+            {/* --- The Image (With CSS Filters Applied) --- */}
+            <img 
+                src={item.src} 
+                alt="Inspection Target" 
+                className="w-full h-auto object-contain max-h-[700px] transition-all duration-200 ease-linear"
+                style={{ filter: getFilterStyle() }} 
+            />
+            
+            {/* --- SVG Overlay (Filters NOT Applied here, so text stays readable) --- */}
             {item.results && (
               <svg 
                 viewBox={`0 0 ${item.results.width} ${item.results.height}`} 
@@ -98,38 +129,38 @@ export const MainStage = React.forwardRef<MainStageRef, MainStageProps>(({ item,
                    const h = y2 - y1;
                    const isHighlighted = i === highlightedIndex;
                    
-                   // --- NEW THINNER STYLES ---
-                   const strokeW = isHighlighted ? 4 : 2;   // Was 40 / 20
-                   const fontSize = 40;                     // Was 45
-                   const labelHeight = 80;                  // Was 80
-                   const labelPadding = 5;
+                   // Dynamic styling based on zoom/selection
+                   const strokeW = isHighlighted ? 8 : 4;
+                   const fontSize = 24;
+                   const labelHeight = 40;
+                   const labelPadding = 4;
                    
                    return (
                      <g key={i} id={`defect-box-${x1}-${y1}`} className="transition-all duration-300">
                        
-                       {/* The Bounding Box */}
+                       {/* Bounding Box */}
                        <rect 
                          x={x1} y={y1} width={w} height={h} 
                          fill={isHighlighted ? color : "none"} 
-                         fillOpacity={isHighlighted ? 0.15 : 0} // Slightly more transparent fill
+                         fillOpacity={isHighlighted ? 0.15 : 0}
                          stroke={color} 
                          strokeWidth={strokeW} 
                          className={isHighlighted ? "animate-pulse" : ""}
                        />
 
-                       {/* The Label Tag (Background) */}
+                       {/* Label Background */}
                        <rect 
                          x={x1} y={y1 - labelHeight} 
-                         width={Math.max(w, 350)} // Ensure label isn't too squished
+                         width={Math.max(w, 160)} 
                          height={labelHeight} 
                          fill={color} 
-                         opacity={isHighlighted ? 0.5 : 0.25} 
+                         opacity={isHighlighted ? 1 : 0.85} 
                        />
                        
-                       {/* The Label Text */}
+                       {/* Label Text */}
                        <text 
                          x={x1 + labelPadding} 
-                         y={y1 - (labelHeight / 2) + (fontSize / 3)} // Vertically centered
+                         y={y1 - (labelHeight / 2) + (fontSize / 3)} 
                          fill="white" 
                          fontSize={fontSize} 
                          fontWeight="600" 
