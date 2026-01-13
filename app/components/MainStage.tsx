@@ -40,6 +40,7 @@ const ZoomControls = () => {
 interface MainStageProps {
   item: BatchItem | null;
   highlightedIndex: number | null;
+  onDefectContextMenu: (e: React.MouseEvent, index: number) => void; // <--- NEW PROP
 }
 
 export interface MainStageRef {
@@ -47,7 +48,7 @@ export interface MainStageRef {
 }
 
 // --- Component ---
-export const MainStage = React.forwardRef<MainStageRef, MainStageProps>(({ item, highlightedIndex }, ref) => {
+export const MainStage = React.forwardRef<MainStageRef, MainStageProps>(({ item, highlightedIndex, onDefectContextMenu }, ref) => {
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
 
   // --- Filter State ---
@@ -136,12 +137,17 @@ export const MainStage = React.forwardRef<MainStageRef, MainStageProps>(({ item,
                    const labelPadding = 4;
                    
                    return (
-                     <g key={i} id={`defect-box-${x1}-${y1}`} className="transition-all duration-300">
+                     <g 
+                        key={i} 
+                        id={`defect-box-${x1}-${y1}`} 
+                        className="transition-all duration-300 cursor-context-menu pointer-events-auto"
+                        onContextMenu={(e) => onDefectContextMenu(e, i)} // <--- ATTACHED HANDLER
+                     >
                        
                        {/* Bounding Box */}
                        <rect 
                          x={x1} y={y1} width={w} height={h} 
-                         fill={isHighlighted ? color : "none"} 
+                         fill={isHighlighted ? color : "transparent"} // Transparent catch-all for clicks
                          fillOpacity={isHighlighted ? 0.15 : 0}
                          stroke={color} 
                          strokeWidth={strokeW} 
