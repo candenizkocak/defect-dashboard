@@ -4,7 +4,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, 
-  Download, X, Eye, LayoutDashboard, ScanLine 
+  Download, X, Eye, LayoutDashboard, ScanLine, 
+  Play, Square, Radio // <--- NEW ICONS
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
@@ -30,30 +31,30 @@ export default function CeraSightDashboard() {
   const [highlightedDefect, setHighlightedDefect] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'inspection' | 'analytics'>('inspection');
   
+  // Simulation State
+  const [isSimulating, setIsSimulating] = useState(false); // <--- NEW STATE
+  const simulationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // UI & Config State
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); // Used for bulk analysis
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [confThreshold, setConfThreshold] = useState(0.35);
   const [useRoi, setUseRoi] = useState(true);
 
-  // Refs
   const mainStageRef = useRef<MainStageRef>(null);
-
-  // Derived State
   const currentItem = selectedIndex >= 0 ? batch[selectedIndex] : null;
 
   // --- Effects ---
 
-  // Reset highlight when changing images
   useEffect(() => {
     setHighlightedDefect(null);
   }, [selectedIndex]);
 
-  // Keyboard Navigation (Only active in Inspection tab)
+  // Keyboard Nav
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (batch.length === 0 || activeTab !== 'inspection') return;
+      if (batch.length === 0 || activeTab !== 'inspection' || isSimulating) return; // Disable keys during sim
       if (e.key === 'ArrowRight') {
         setSelectedIndex(prev => Math.min(prev + 1, batch.length - 1));
       } else if (e.key === 'ArrowLeft') {
@@ -62,11 +63,51 @@ export default function CeraSightDashboard() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [batch.length, activeTab]);
+  }, [batch.length, activeTab, isSimulating]);
 
-  // --- Statistics ---
+  // --- ENGINE: Simulation Loop ---
+  useEffect(() => {
+    if (!isSimulating) {
+      if (simulationTimerRef.current) clearTimeout(simulationTimerRef.current);
+      return;
+    }
 
-  // Global stats for Sidebar & Modal
+    // Define the step function
+    const runSimulationStep = async () => {
+        // Safety check
+        if (selectedIndex < 0 || selectedIndex >= batch.length) {
+            setIsSimulating(false);
+            toast.success("Simulation complete");
+            return;
+        }
+
+        const current = batch[selectedIndex];
+
+        // If current item needs processing
+        if (current.status === 'idle') {
+            await analyzeSingleImage(selectedIndex);
+        }
+
+        // Wait a bit to simulate "conveyor speed", then move next
+        simulationTimerRef.current = setTimeout(() => {
+            if (selectedIndex < batch.length - 1) {
+                setSelectedIndex(prev => prev + 1);
+            } else {
+                setIsSimulating(false);
+                toast.success("Simulation complete");
+            }
+        }, 2000); // 2 seconds per tile
+    };
+
+    runSimulationStep();
+
+    return () => {
+        if (simulationTimerRef.current) clearTimeout(simulationTimerRef.current);
+    };
+  }, [isSimulating, selectedIndex, batch]); // Re-run when index changes
+
+
+  // --- Helper: Stats ---
   const globalStats = useMemo(() => {
     const counts: {[key: string]: number} = {};
     let total = 0;
@@ -84,7 +125,6 @@ export default function CeraSightDashboard() {
     return { data, total };
   }, [batch]);
 
-  // Current Image Stats
   const currentStats = useMemo(() => {
     if (!currentItem?.results?.defects) return [];
     const counts: {[key: string]: number} = {};
@@ -101,7 +141,6 @@ export default function CeraSightDashboard() {
   const handleUpload = useCallback((files: File[]) => {
     const newItems: BatchItem[] = [];
     let processedCount = 0;
-
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -129,12 +168,12 @@ export default function CeraSightDashboard() {
 
   const removeImage = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isSimulating) return; // Prevent deleting during sim
     const newBatch = [...batch];
     newBatch.splice(index, 1);
     setBatch(newBatch);
     if (newBatch.length === 0) setSelectedIndex(-1);
     else if (selectedIndex >= index) setSelectedIndex(Math.max(0, selectedIndex - 1));
-    toast.info("Image removed from queue");
   };
 
   const handleDefectFocus = (index: number) => {
@@ -144,25 +183,20 @@ export default function CeraSightDashboard() {
     mainStageRef.current?.zoomToBox(box);
   };
 
-  const analyzeBatch = async () => {
-    setIsProcessing(true);
-    let successCount = 0;
-    
-    for (let i = 0; i < batch.length; i++) {
-      if (batch[i].status === 'done') continue;
-
-      setBatch(prev => {
+  // Logic to analyze ONE specific image (Refactored from analyzeBatch)
+  const analyzeSingleImage = async (index: number) => {
+    // 1. Set Status Processing
+    setBatch(prev => {
         const copy = [...prev];
-        copy[i].status = 'processing';
+        copy[index].status = 'processing';
         return copy;
-      });
-      
-      // Auto-switch to inspection tab and focus current image
-      if (activeTab !== 'inspection') setActiveTab('inspection');
-      setSelectedIndex(i);
+    });
 
-      try {
-        const base64Data = batch[i].src.split(',')[1];
+    try {
+        const item = batch[index];
+        const base64Data = item.src.split(',')[1];
+        
+        // 2. Call API
         const response = await fetch(API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -170,37 +204,69 @@ export default function CeraSightDashboard() {
         });
         
         if (!response.ok) throw new Error("API Error");
-        
         const data = await response.json();
-        const crops = await generateCrops(batch[i].src, data.defects);
+        const crops = await generateCrops(item.src, data.defects);
 
+        // 3. Set Status Done
         setBatch(prev => {
           const copy = [...prev];
-          copy[i].status = 'done';
-          copy[i].results = data;
-          copy[i].crops = crops;
+          copy[index].status = 'done';
+          copy[index].results = data;
+          copy[index].crops = crops;
           return copy;
         });
-        successCount++;
-      } catch (error) {
+
+    } catch (error) {
         console.error(error);
         setBatch(prev => {
           const copy = [...prev];
-          copy[i].status = 'error';
+          copy[index].status = 'error';
           return copy;
         });
-        toast.error(`Failed to analyze ${batch[i].file.name}`);
-      }
+    }
+  };
+
+  // Bulk Analysis (The old button)
+  const analyzeBatch = async () => {
+    setIsProcessing(true);
+    let successCount = 0;
+    
+    // Switch to inspection tab to see progress
+    if (activeTab !== 'inspection') setActiveTab('inspection');
+
+    for (let i = 0; i < batch.length; i++) {
+      if (batch[i].status === 'done') continue;
+      
+      setSelectedIndex(i);
+      await analyzeSingleImage(i);
+      if (batch[i].status !== 'error') successCount++; // Note: strictly we should check the new state, but for async simplicity this is "optimistic"
     }
     
     setIsProcessing(false);
-    if(successCount > 0) toast.success(`Batch analysis complete. Processed ${successCount} images.`);
+    toast.success("Batch analysis complete");
   };
+
+  // Simulation Toggle
+  const toggleSimulation = () => {
+      if (isSimulating) {
+          setIsSimulating(false);
+          toast.info("Simulation paused");
+      } else {
+          // If we are at the end, restart
+          if (selectedIndex === batch.length - 1 && batch[selectedIndex].status === 'done') {
+              setSelectedIndex(0);
+          }
+          setIsSimulating(true);
+          setActiveTab('inspection'); // Force view to inspection
+          toast.info("Simulation started - Live Mode Active");
+      }
+  };
+
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans overflow-x-hidden selection:bg-blue-100 selection:text-blue-900">
       
-      {/* --- HEADER --- */}
+      {/* HEADER */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -210,6 +276,15 @@ export default function CeraSightDashboard() {
                Cera<span className="text-blue-600">Sight</span>
              </h1>
           </div>
+          
+          {/* SIMULATION STATUS INDICATOR */}
+          {isSimulating && (
+              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-red-50 text-red-600 rounded-full border border-red-100 animate-pulse">
+                  <Radio className="w-4 h-4" />
+                  <span className="text-xs font-bold tracking-wider">LIVE PRODUCTION MODE</span>
+              </div>
+          )}
+
           <div className="flex items-center gap-4">
              <a href="https://huggingface.co/candenizkocak/tile-defect-detection-yolo11" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600 transition-colors hover:bg-slate-50 px-3 py-1.5 rounded-lg border border-transparent hover:border-slate-200">
                <FileText className="w-4 h-4" /> Model Report <ChevronRight className="w-3 h-3" />
@@ -221,7 +296,6 @@ export default function CeraSightDashboard() {
         </div>
       </header>
 
-      {/* --- DRAWERS & MODALS --- */}
       <ConfigDrawer 
         isOpen={isConfigOpen} 
         onClose={() => setIsConfigOpen(false)}
@@ -231,6 +305,7 @@ export default function CeraSightDashboard() {
 
       {isChartModalOpen && (
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+           {/* (Chart Modal Content - Same as before) */}
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
               <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                  <div>
@@ -260,26 +335,35 @@ export default function CeraSightDashboard() {
         </div>
       )}
 
-      {/* --- MAIN LAYOUT --- */}
       <main className="max-w-[1600px] mx-auto px-6 py-8 grid grid-cols-12 gap-8">
         
-        {/* Left Sidebar (Queue & Upload) */}
+        {/* SIDEBAR - Modified to pass Simulation Props */}
+        {/* We need to modify Sidebar.tsx to accept these props, or just inline the button logic inside Sidebar if we lift Sidebar state up. 
+            For now, I'll assume we pass a `customAction` or similar to Sidebar, OR easier:
+            I will render the Sidebar component here, but we need to update Sidebar.tsx to include the Play button.
+            
+            Actually, let's just update Sidebar.tsx in the next step. 
+            For this file, I will just pass the props.
+        */}
         <Sidebar 
           batch={batch}
           selectedIndex={selectedIndex}
-          isProcessing={isProcessing}
+          isProcessing={isProcessing} // This is for Bulk
           globalStats={globalStats}
           onUpload={handleUpload}
           onAnalyze={analyzeBatch}
           onSelect={setSelectedIndex}
           onRemove={removeImage}
           onOpenChart={() => setIsChartModalOpen(true)}
+          // --- NEW PROPS FOR SIMULATION ---
+          // You will need to add these to SidebarProps interface in Sidebar.tsx
+          isSimulating={isSimulating}
+          onToggleSimulation={toggleSimulation}
         />
 
-        {/* Right Content Area */}
         <div className="col-span-12 lg:col-span-9 space-y-6">
           
-          {/* Tab Navigation */}
+          {/* TAB NAV */}
           <div className="flex items-center gap-1 bg-slate-200/50 p-1 rounded-xl w-fit">
               <button
                   onClick={() => setActiveTab('inspection')}
@@ -303,11 +387,9 @@ export default function CeraSightDashboard() {
               </button>
           </div>
 
-          {/* === CONTENT SWITCHER === */}
           {activeTab === 'inspection' ? (
-            // --- INSPECTION VIEW ---
             <div className="space-y-6 animate-in fade-in duration-300">
-                {/* Image Navigation Bar */}
+                {/* NAV BAR */}
                 <div className="bg-white/80 backdrop-blur-sm border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div>
@@ -329,24 +411,23 @@ export default function CeraSightDashboard() {
                     <div className="flex items-center gap-3">
                         <span className="hidden sm:inline text-xs text-slate-400 mr-2">Use <kbd className="font-mono bg-gray-100 px-1 rounded">←</kbd> <kbd className="font-mono bg-gray-100 px-1 rounded">→</kbd> keys</span>
                         <div className="flex items-center bg-gray-100 rounded-lg p-1">
-                        <button disabled={selectedIndex <= 0} onClick={() => setSelectedIndex(i => i - 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronLeft className="w-5 h-5" /></button>
+                        <button disabled={selectedIndex <= 0 || isSimulating} onClick={() => setSelectedIndex(i => i - 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronLeft className="w-5 h-5" /></button>
                         <span className="text-xs font-mono text-slate-500 w-16 text-center font-medium">{batch.length > 0 ? `${selectedIndex + 1} / ${batch.length}` : "- / -"}</span>
-                        <button disabled={selectedIndex >= batch.length - 1} onClick={() => setSelectedIndex(i => i + 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronRight className="w-5 h-5" /></button>
+                        <button disabled={selectedIndex >= batch.length - 1 || isSimulating} onClick={() => setSelectedIndex(i => i + 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronRight className="w-5 h-5" /></button>
                         </div>
                     </div>
                 </div>
                 
-                {/* Main Stage */}
+                {/* STAGE */}
                 <MainStage 
                     ref={mainStageRef}
                     item={currentItem} 
                     highlightedIndex={highlightedDefect}
                 />
 
-                {/* Inspection Details Panel */}
+                {/* DETAILS (Only show if results exist) */}
                 {currentItem?.results && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
-                        {/* Single Tile Stats */}
                         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-1">
                             <h3 className="text-sm font-semibold text-slate-700 mb-4 uppercase tracking-wider">Defect Breakdown</h3>
                             <div className="h-48 w-full -ml-4">
@@ -366,7 +447,6 @@ export default function CeraSightDashboard() {
                             </div>
                         </div>
 
-                        {/* Defect Crops Gallery */}
                         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-2">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
@@ -394,7 +474,6 @@ export default function CeraSightDashboard() {
                                     >
                                         <div className="aspect-square relative overflow-hidden bg-white">
                                             <img src={crop.src} alt="defect crop" className="w-full h-full object-contain" />
-                                            {/* Hover Icon */}
                                             <div className={`absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${highlightedDefect === i ? 'opacity-0' : ''}`}>
                                                 <Eye className="w-6 h-6 text-white drop-shadow-md" />
                                             </div>
@@ -421,7 +500,6 @@ export default function CeraSightDashboard() {
                 )}
             </div>
           ) : (
-            // --- ANALYTICS VIEW ---
             <AnalyticsView batch={batch} />
           )}
 

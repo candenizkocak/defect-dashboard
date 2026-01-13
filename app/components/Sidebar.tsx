@@ -1,7 +1,8 @@
 // app/components/Sidebar.tsx
 import React from 'react';
-import { useDropzone } from 'react-dropzone'; // <--- New Import
-import { Upload, Loader2, ZoomIn, Layers, Trash2, CheckCircle, BarChart3, Image as ImageIcon } from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
+// Add Play, Square imports
+import { Upload, Loader2, ZoomIn, Layers, Trash2, CheckCircle, BarChart3, Image as ImageIcon, Play, Square } from 'lucide-react';
 import { BatchItem } from '../types';
 import { ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { DEFECT_COLORS } from '../constants';
@@ -11,38 +12,41 @@ interface SidebarProps {
   selectedIndex: number;
   isProcessing: boolean;
   globalStats: { data: any[], total: number };
-  onUpload: (files: File[]) => void; // <--- Changed signature
+  onUpload: (files: File[]) => void;
   onAnalyze: () => void;
   onSelect: (index: number) => void;
   onRemove: (index: number, e: React.MouseEvent) => void;
   onOpenChart: () => void;
+  
+  // --- NEW PROPS ---
+  isSimulating: boolean;
+  onToggleSimulation: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   batch, selectedIndex, isProcessing, globalStats,
-  onUpload, onAnalyze, onSelect, onRemove, onOpenChart
+  onUpload, onAnalyze, onSelect, onRemove, onOpenChart,
+  isSimulating, onToggleSimulation
 }) => {
   
-  // Drag & Drop Logic
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { 'image/*': [] },
     onDrop: (acceptedFiles) => onUpload(acceptedFiles),
-    disabled: isProcessing
+    disabled: isProcessing || isSimulating // Disable drop during sim
   });
 
   return (
     <aside className="col-span-12 lg:col-span-3 space-y-6 flex flex-col h-[calc(100vh-8rem)] sticky top-24">
       
-      {/* 1. Upload & Actions Area */}
+      {/* 1. Actions Area */}
       <div className="bg-white border border-gray-200/60 rounded-xl p-5 shadow-sm space-y-3 flex-shrink-0 backdrop-blur-sm">
          
-         {/* Drag & Drop Zone */}
          <div 
             {...getRootProps()} 
             className={`
               w-full py-6 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200
               ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}
-              ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}
+              ${(isProcessing || isSimulating) ? 'opacity-50 cursor-not-allowed' : ''}
             `}
          >
             <input {...getInputProps()} />
@@ -57,9 +61,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
          </div>
 
+         {/* Standard Analyze Button */}
          <button
             onClick={onAnalyze}
-            disabled={batch.length === 0 || isProcessing}
+            disabled={batch.length === 0 || isProcessing || isSimulating}
             className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all shadow-lg 
                 ${batch.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' : 
                 isProcessing ? 'bg-blue-600/90 text-white cursor-wait' : 'bg-gradient-to-b from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white shadow-blue-900/20'}`}
@@ -70,6 +75,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <><ZoomIn className="w-4 h-4" /> Analyze Batch ({batch.filter(i => i.status === 'idle').length})</>
             )}
          </button>
+
+         {/* --- NEW SIMULATION BUTTON --- */}
+         {batch.length > 0 && (
+             <button
+                onClick={onToggleSimulation}
+                disabled={isProcessing}
+                className={`w-full py-2.5 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 transition-all border
+                    ${isSimulating 
+                        ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' 
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'}
+                `}
+             >
+                {isSimulating ? (
+                    <><Square className="w-3.5 h-3.5 fill-current" /> Stop Slideshow</>
+                ) : (
+                    <><Play className="w-3.5 h-3.5 fill-current" /> Start Slideshow</>
+                )}
+             </button>
+         )}
       </div>
 
       {/* 2. Mini Chart */}
@@ -128,6 +152,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <img src={item.src} className="w-full h-full object-cover" alt="thumbnail" />
                         {item.status === 'done' && <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center"><CheckCircle className="w-4 h-4 text-white drop-shadow-md" /></div>}
                         {item.status === 'processing' && <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center"><Loader2 className="w-4 h-4 text-white animate-spin" /></div>}
+                        {/* Indicate active item during simulation */}
+                        {isSimulating && selectedIndex === idx && <div className="absolute inset-0 ring-2 ring-red-500 ring-inset" />}
                     </div>
                     <div className="flex-grow min-w-0">
                         <p className={`text-sm font-medium truncate ${selectedIndex === idx ? 'text-blue-700' : 'text-slate-700'}`}>
@@ -139,7 +165,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </div>
                     <button 
                         onClick={(e) => onRemove(idx, e)}
-                        className="p-1.5 hover:bg-red-50 rounded-md text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                        disabled={isSimulating} // Disable remove during sim
+                        className="p-1.5 hover:bg-red-50 rounded-md text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-0"
                     >
                         <Trash2 className="w-3.5 h-3.5" />
                     </button>
