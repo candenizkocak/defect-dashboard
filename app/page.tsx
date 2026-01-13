@@ -1,66 +1,96 @@
 // app/page.tsx
 "use client";
 
-import React, { useState, useMemo } from 'react';
-import { Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, Download, X, BarChart3 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, Cell } from 'recharts';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+// ... existing imports ...
+import { Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, Download, X, Eye } from 'lucide-react'; // Added Eye icon
+import { toast } from 'sonner';
 
 import { API_URL, DEFECT_COLORS } from './constants';
-import { BatchItem, Crop } from './types';
+import { BatchItem } from './types';
 import { generateCrops, downloadBatchCSV } from './utils/processing';
 
 import { Sidebar } from './components/Sidebar';
-import { MainStage } from './components/MainStage';
+// Update import to include Ref type if needed, though we can infer it
+import { MainStage, MainStageRef } from './components/MainStage';
 import { ConfigDrawer } from './components/ConfigDrawer';
 
+// ... Recharts imports ...
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, Cell } from 'recharts';
+
 export default function CeraSightDashboard() {
-  // --- State ---
+  // ... state ...
   const [batch, setBatch] = useState<BatchItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [highlightedDefect, setHighlightedDefect] = useState<number | null>(null); // <--- NEW STATE
+  
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [confThreshold, setConfThreshold] = useState(0.35);
   const [useRoi, setUseRoi] = useState(true);
 
+  // Ref to control the stage
+  const mainStageRef = useRef<MainStageRef>(null);
+
   const currentItem = selectedIndex >= 0 ? batch[selectedIndex] : null;
 
-  // --- Computed Stats ---
+  // Reset highlight when changing images
+  useEffect(() => {
+    setHighlightedDefect(null);
+  }, [selectedIndex]);
+
+  // ... (Keep existing useEffect for Keyboard and Stats Calculation) ...
+  // (Paste your existing useEffect and globalStats/currentStats here)
   const globalStats = useMemo(() => {
-    const counts: {[key: string]: number} = {};
-    let total = 0;
-    batch.forEach(item => {
-      if (item.results?.defects) {
-        item.results.defects.forEach((d) => {
-          counts[d.class] = (counts[d.class] || 0) + 1;
-          total++;
-        });
-      }
-    });
-    const data = Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-    return { data, total };
+      // ... same as before
+      const counts: {[key: string]: number} = {};
+      let total = 0;
+      batch.forEach(item => {
+        if (item.results?.defects) {
+          item.results.defects.forEach((d) => {
+            counts[d.class] = (counts[d.class] || 0) + 1;
+            total++;
+          });
+        }
+      });
+      const data = Object.entries(counts)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+      return { data, total };
   }, [batch]);
 
   const currentStats = useMemo(() => {
-    if (!currentItem?.results?.defects) return [];
-    const counts: {[key: string]: number} = {};
-    currentItem.results.defects.forEach((d) => {
-      counts[d.class] = (counts[d.class] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value); 
+      // ... same as before
+      if (!currentItem?.results?.defects) return [];
+      const counts: {[key: string]: number} = {};
+      currentItem.results.defects.forEach((d) => {
+        counts[d.class] = (counts[d.class] || 0) + 1;
+      });
+      return Object.entries(counts)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value); 
   }, [currentItem]);
 
-  // --- Handlers ---
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newItems: BatchItem[] = [];
-      const files = Array.from(e.target.files);
-      let processedCount = 0;
 
+  // --- NEW HANDLER: Click on Crop ---
+  const handleDefectFocus = (index: number) => {
+    if (!currentItem?.results?.defects[index]) return;
+    
+    setHighlightedDefect(index);
+    const box = currentItem.results.defects[index].box;
+    
+    // Command the MainStage to zoom
+    mainStageRef.current?.zoomToBox(box);
+  };
+
+  // ... (Keep handleUpload, removeImage, analyzeBatch as they were) ...
+  // Note: Ensure you include the existing code for these functions.
+  
+  const handleUpload = useCallback((files: File[]) => {
+      // ... same as before
+      const newItems: BatchItem[] = [];
+      let processedCount = 0;
       files.forEach((file) => {
         const reader = new FileReader();
         reader.onload = (ev) => {
@@ -79,34 +109,35 @@ export default function CeraSightDashboard() {
                 if (selectedIndex === -1) setSelectedIndex(0);
                 return updated;
             });
+            toast.success(`Added ${files.length} images to queue`);
           }
         };
         reader.readAsDataURL(file);
       });
-    }
-  };
+  }, [selectedIndex]);
 
   const removeImage = (index: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newBatch = [...batch];
-    newBatch.splice(index, 1);
-    setBatch(newBatch);
-    if (newBatch.length === 0) setSelectedIndex(-1);
-    else if (selectedIndex >= index) setSelectedIndex(Math.max(0, selectedIndex - 1));
+      // ... same as before
+      e.stopPropagation();
+      const newBatch = [...batch];
+      newBatch.splice(index, 1);
+      setBatch(newBatch);
+      if (newBatch.length === 0) setSelectedIndex(-1);
+      else if (selectedIndex >= index) setSelectedIndex(Math.max(0, selectedIndex - 1));
+      toast.info("Image removed from queue");
   };
 
   const analyzeBatch = async () => {
     setIsProcessing(true);
+    let successCount = 0;
     for (let i = 0; i < batch.length; i++) {
       if (batch[i].status === 'done') continue;
-
       setBatch(prev => {
         const copy = [...prev];
         copy[i].status = 'processing';
         return copy;
       });
       setSelectedIndex(i);
-
       try {
         const base64Data = batch[i].src.split(',')[1];
         const response = await fetch(API_URL, {
@@ -114,9 +145,9 @@ export default function CeraSightDashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64Data, conf_threshold: confThreshold, use_roi: useRoi })
         });
+        if (!response.ok) throw new Error("API Error");
         const data = await response.json();
         const crops = await generateCrops(batch[i].src, data.defects);
-
         setBatch(prev => {
           const copy = [...prev];
           copy[i].status = 'done';
@@ -124,6 +155,7 @@ export default function CeraSightDashboard() {
           copy[i].crops = crops;
           return copy;
         });
+        successCount++;
       } catch (error) {
         console.error(error);
         setBatch(prev => {
@@ -131,25 +163,29 @@ export default function CeraSightDashboard() {
           copy[i].status = 'error';
           return copy;
         });
+        toast.error(`Failed to analyze ${batch[i].file.name}`);
       }
     }
     setIsProcessing(false);
+    if(successCount > 0) toast.success(`Batch analysis complete. Processed ${successCount} images.`);
   };
 
+
   return (
-    <div className="min-h-screen bg-gray-50 text-slate-900 font-sans overflow-x-hidden">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans overflow-x-hidden">
+      
+      {/* (Header, ConfigDrawer, ChartModal remain exactly the same...) */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-             <img src="/VitrA_logo.png" alt="CeraSight Logo" className="h-8 w-auto" />
+             <img src="/VitrA_logo.png" alt="Logo" className="h-8 w-auto" />
              <div className="h-6 w-px bg-gray-200 mx-2"></div>
              <h1 className="font-bold text-xl tracking-tight text-slate-900">
                Cera<span className="text-blue-600">Sight</span>
              </h1>
           </div>
           <div className="flex items-center gap-4">
-             <a href="https://huggingface.co/candenizkocak/tile-defect-detection-yolo11" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600 transition-colors bg-gray-50 px-3 py-1.5 rounded-lg">
+             <a href="https://huggingface.co/candenizkocak/tile-defect-detection-yolo11" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600 transition-colors hover:bg-slate-50 px-3 py-1.5 rounded-lg border border-transparent hover:border-slate-200">
                <FileText className="w-4 h-4" /> Model Report <ChevronRight className="w-3 h-3" />
              </a>
              <button onClick={() => setIsConfigOpen(true)} className={`p-2 rounded-lg transition-colors border ${isConfigOpen ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-slate-500 hover:bg-gray-50'}`}>
@@ -159,23 +195,22 @@ export default function CeraSightDashboard() {
         </div>
       </header>
 
-      {/* Drawers & Modals */}
       <ConfigDrawer 
         isOpen={isConfigOpen} 
         onClose={() => setIsConfigOpen(false)}
         confThreshold={confThreshold} setConfThreshold={setConfThreshold}
         useRoi={useRoi} setUseRoi={setUseRoi}
       />
-
+      
       {isChartModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
               <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                  <div>
                     <h2 className="text-xl font-bold text-slate-800">Global Batch Statistics</h2>
                     <p className="text-sm text-slate-500">Aggregated from {batch.length} images</p>
                  </div>
-                 <button onClick={() => setIsChartModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                 <button onClick={() => setIsChartModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                     <X className="w-6 h-6 text-slate-500" />
                  </button>
               </div>
@@ -185,8 +220,8 @@ export default function CeraSightDashboard() {
                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
                      <XAxis dataKey="name" axisLine={false} tickLine={false} />
                      <YAxis axisLine={false} tickLine={false} />
-                     <ReTooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                     <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={60}>
+                     <ReTooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', border: 'none' }} />
+                     <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={60}>
                         {globalStats.data.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={DEFECT_COLORS[entry.name] || DEFECT_COLORS['Unknown']} />
                         ))}
@@ -198,7 +233,7 @@ export default function CeraSightDashboard() {
         </div>
       )}
 
-      {/* Main Layout */}
+      {/* Main Grid */}
       <main className="max-w-[1600px] mx-auto px-6 py-8 grid grid-cols-12 gap-8">
         
         <Sidebar 
@@ -206,7 +241,7 @@ export default function CeraSightDashboard() {
           selectedIndex={selectedIndex}
           isProcessing={isProcessing}
           globalStats={globalStats}
-          onUpload={handleFileUpload}
+          onUpload={handleUpload}
           onAnalyze={analyzeBatch}
           onSelect={setSelectedIndex}
           onRemove={removeImage}
@@ -214,17 +249,19 @@ export default function CeraSightDashboard() {
         />
 
         <div className="col-span-12 lg:col-span-9 space-y-6">
-          {/* Nav Bar */}
-          <div className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
+          {/* Top Nav (Same as before) */}
+          <div className="bg-white/80 backdrop-blur-sm border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
              <div className="flex items-center gap-4">
                 <div>
                    <h2 className="text-lg font-bold text-slate-800">
                        {currentItem ? currentItem.file.name : "Ready to Inspect"}
                    </h2>
                    {currentItem?.status === 'done' ? (
-                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-800 text-xs font-bold border border-orange-200 mt-1">
+                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border mt-1 
+                         ${currentItem.results?.defects.length ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'}
+                       `}>
                            <AlertTriangle className="w-3 h-3" />
-                           {currentItem.results?.defects.length} Defects Found
+                           {currentItem.results?.defects.length || 0} Defects Found
                        </span>
                    ) : (
                        <p className="text-xs text-slate-400 mt-0.5">Select an image from the queue</p>
@@ -232,6 +269,7 @@ export default function CeraSightDashboard() {
                 </div>
              </div>
              <div className="flex items-center gap-3">
+                <span className="hidden sm:inline text-xs text-slate-400 mr-2">Use <kbd className="font-mono bg-gray-100 px-1 rounded">←</kbd> <kbd className="font-mono bg-gray-100 px-1 rounded">→</kbd> keys</span>
                 <div className="flex items-center bg-gray-100 rounded-lg p-1">
                    <button disabled={selectedIndex <= 0} onClick={() => setSelectedIndex(i => i - 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronLeft className="w-5 h-5" /></button>
                    <span className="text-xs font-mono text-slate-500 w-16 text-center font-medium">{batch.length > 0 ? `${selectedIndex + 1} / ${batch.length}` : "- / -"}</span>
@@ -240,20 +278,25 @@ export default function CeraSightDashboard() {
              </div>
           </div>
           
-          <MainStage item={currentItem} />
+          {/* MAIN STAGE with Ref and Highlight Prop */}
+          <MainStage 
+            ref={mainStageRef}
+            item={currentItem} 
+            highlightedIndex={highlightedDefect}
+          />
 
           {/* Details Panel */}
           {currentItem?.results && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
                 <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-1">
-                    <h3 className="text-sm font-semibold text-slate-700 mb-4 uppercase tracking-wider">Defects in this Tile</h3>
+                    <h3 className="text-sm font-semibold text-slate-700 mb-4 uppercase tracking-wider">Defect Breakdown</h3>
                     <div className="h-48 w-full -ml-4">
                         <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={currentStats} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                             <XAxis type="number" hide />
                             <YAxis dataKey="name" type="category" tick={{fontSize: 10, fill: '#64748b'}} width={80} />
-                            <ReTooltip cursor={{fill: '#f1f5f9'}} contentStyle={{ backgroundColor: '#fff', borderColor: '#e2e8f0', borderRadius: '8px' }} />
+                            <ReTooltip cursor={{fill: '#f8fafc'}} contentStyle={{ backgroundColor: '#fff', borderColor: '#e2e8f0', borderRadius: '8px' }} />
                             <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
                                 {currentStats.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={DEFECT_COLORS[entry.name] || DEFECT_COLORS['Unknown']} />
@@ -267,31 +310,52 @@ export default function CeraSightDashboard() {
                 <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-2">
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
-                            <ZoomIn className="w-5 h-5 text-slate-400" />
-                            <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Zoomed Inspection</h3>
+                            <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Detected Crops</h3>
+                            <span className="text-[10px] text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">Click crop to locate</span>
                         </div>
-                        <button onClick={() => downloadBatchCSV(batch)} className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-3 py-1.5 bg-blue-50 rounded-lg transition-colors">
-                            <Download className="w-3.5 h-3.5" /> Export Full Batch Report
+                        <button onClick={() => downloadBatchCSV(batch)} className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+                            <Download className="w-3.5 h-3.5" /> Download Report
                         </button>
                     </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                        {currentItem.crops.map((crop, i) => (
-                        <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg overflow-hidden group hover:shadow-md transition-all">
-                            <div className="aspect-square relative overflow-hidden bg-white">
-                                <img src={crop.src} alt="defect crop" className="w-full h-full object-contain" />
-                            </div>
-                            <div className="p-2 border-t border-gray-100 bg-white">
-                                <div className="flex items-center gap-1.5 mb-1">
-                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: DEFECT_COLORS[crop.label] }} />
-                                    <p className="text-[10px] font-bold text-slate-700 truncate">{crop.label}</p>
+
+                    {currentItem.crops.length > 0 ? (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                            {currentItem.crops.map((crop, i) => (
+                            <div 
+                                key={i} 
+                                onClick={() => handleDefectFocus(i)} // <--- CLICK TO FOCUS
+                                className={`
+                                    bg-slate-50 border rounded-lg overflow-hidden group cursor-pointer transition-all duration-200
+                                    ${highlightedDefect === i 
+                                        ? 'ring-2 ring-blue-500 ring-offset-2 border-blue-500 shadow-md transform scale-[1.02]' 
+                                        : 'border-slate-200 hover:shadow-md hover:border-blue-300'
+                                    }
+                                `}
+                            >
+                                <div className="aspect-square relative overflow-hidden bg-white">
+                                    <img src={crop.src} alt="defect crop" className="w-full h-full object-contain" />
+                                    {/* Overlay Icon on Hover */}
+                                    <div className={`absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${highlightedDefect === i ? 'opacity-0' : ''}`}>
+                                        <Eye className="w-6 h-6 text-white drop-shadow-md" />
+                                    </div>
                                 </div>
-                                <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full" style={{ width: `${crop.score * 100}%`, backgroundColor: DEFECT_COLORS[crop.label] }} />
+                                <div className={`p-2 border-t bg-white ${highlightedDefect === i ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                                    <div className="flex items-center gap-1.5 mb-1">
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: DEFECT_COLORS[crop.label] }} />
+                                        <p className="text-[10px] font-bold text-slate-700 truncate">{crop.label}</p>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                        <div className="h-full rounded-full" style={{ width: `${crop.score * 100}%`, backgroundColor: DEFECT_COLORS[crop.label] }} />
+                                    </div>
                                 </div>
                             </div>
+                            ))}
                         </div>
-                        ))}
-                    </div>
+                    ) : (
+                        <div className="h-40 flex items-center justify-center text-slate-400 text-sm italic">
+                            No defects detected in this tile.
+                        </div>
+                    )}
                 </div>
             </div>
           )}
