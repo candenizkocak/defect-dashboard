@@ -1,8 +1,10 @@
 // app/components/Sidebar.tsx
 import React from 'react';
 import { useDropzone } from 'react-dropzone';
-// Add Play, Square imports
-import { Upload, Loader2, ZoomIn, Layers, Trash2, CheckCircle, BarChart3, Image as ImageIcon, Play, Square } from 'lucide-react';
+import { 
+  Upload, Loader2, ZoomIn, Layers, Trash2, CheckCircle, 
+  BarChart3, Image as ImageIcon, Play, Square, Camera 
+} from 'lucide-react';
 import { BatchItem } from '../types';
 import { ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { DEFECT_COLORS } from '../constants';
@@ -17,22 +19,21 @@ interface SidebarProps {
   onSelect: (index: number) => void;
   onRemove: (index: number, e: React.MouseEvent) => void;
   onOpenChart: () => void;
-  
-  // --- NEW PROPS ---
   isSimulating: boolean;
   onToggleSimulation: () => void;
+  onOpenCamera: () => void; // <--- NEW PROP
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   batch, selectedIndex, isProcessing, globalStats,
   onUpload, onAnalyze, onSelect, onRemove, onOpenChart,
-  isSimulating, onToggleSimulation
+  isSimulating, onToggleSimulation, onOpenCamera
 }) => {
   
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { 'image/*': [] },
     onDrop: (acceptedFiles) => onUpload(acceptedFiles),
-    disabled: isProcessing || isSimulating // Disable drop during sim
+    disabled: isProcessing || isSimulating
   });
 
   return (
@@ -41,6 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* 1. Actions Area */}
       <div className="bg-white border border-gray-200/60 rounded-xl p-5 shadow-sm space-y-3 flex-shrink-0 backdrop-blur-sm">
          
+         {/* Dropzone */}
          <div 
             {...getRootProps()} 
             className={`
@@ -61,7 +63,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
          </div>
 
-         {/* Standard Analyze Button */}
+         {/* NEW: Camera Button */}
+         <button
+            onClick={onOpenCamera}
+            disabled={isProcessing || isSimulating}
+            className={`w-full py-2.5 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 transition-all border
+                ${(isProcessing || isSimulating)
+                   ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                   : 'bg-white border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                }
+            `}
+         >
+            <Camera className="w-3.5 h-3.5" /> Use Webcam
+         </button>
+
+         {/* Analyze Button */}
          <button
             onClick={onAnalyze}
             disabled={batch.length === 0 || isProcessing || isSimulating}
@@ -76,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
          </button>
 
-         {/* --- NEW SIMULATION BUTTON --- */}
+         {/* Simulation Button */}
          {batch.length > 0 && (
              <button
                 onClick={onToggleSimulation}
@@ -88,9 +104,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 `}
              >
                 {isSimulating ? (
-                    <><Square className="w-3.5 h-3.5 fill-current" /> Stop Slideshow</>
+                    <><Square className="w-3.5 h-3.5 fill-current" /> Stop Simulation</>
                 ) : (
-                    <><Play className="w-3.5 h-3.5 fill-current" /> Start Slideshow</>
+                    <><Play className="w-3.5 h-3.5 fill-current" /> Live Production Mode</>
                 )}
              </button>
          )}
@@ -152,7 +168,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <img src={item.src} className="w-full h-full object-cover" alt="thumbnail" />
                         {item.status === 'done' && <div className="absolute inset-0 bg-green-500/20 flex items-center justify-center"><CheckCircle className="w-4 h-4 text-white drop-shadow-md" /></div>}
                         {item.status === 'processing' && <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center"><Loader2 className="w-4 h-4 text-white animate-spin" /></div>}
-                        {/* Indicate active item during simulation */}
                         {isSimulating && selectedIndex === idx && <div className="absolute inset-0 ring-2 ring-red-500 ring-inset" />}
                     </div>
                     <div className="flex-grow min-w-0">
@@ -165,7 +180,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </div>
                     <button 
                         onClick={(e) => onRemove(idx, e)}
-                        disabled={isSimulating} // Disable remove during sim
+                        disabled={isSimulating}
                         className="p-1.5 hover:bg-red-50 rounded-md text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-0"
                     >
                         <Trash2 className="w-3.5 h-3.5" />
