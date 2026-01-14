@@ -4,8 +4,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, 
-  Download, X, Eye, LayoutDashboard, ScanLine, 
-  Radio 
+  X, Eye, LayoutDashboard, ScanLine, Radio 
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
@@ -16,7 +15,7 @@ import { toast } from 'sonner';
 // Internal Imports
 import { API_URL, DEFECT_COLORS } from './constants';
 import { BatchItem } from './types';
-import { generateCrops, downloadBatchCSV } from './utils/processing';
+import { generateCrops } from './utils/processing';
 import { exportYOLODataset } from './utils/exportDataset';
 
 // Components
@@ -26,7 +25,7 @@ import { ConfigDrawer } from './components/ConfigDrawer';
 import { AnalyticsView } from './components/AnalyticsView';
 import { ContextMenu } from './components/ContextMenu';
 import { WebcamModal } from './components/WebcamModal';
-import { ClassSelector } from './components/ClassSelector'; // <--- NEW COMPONENT
+import { ClassSelector } from './components/ClassSelector';
 
 export default function CeraSightDashboard() {
   // --- State ---
@@ -37,7 +36,7 @@ export default function CeraSightDashboard() {
   
   // Modals & Popups
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; defectIndex: number } | null>(null);
-  const [newDefectCandidate, setNewDefectCandidate] = useState<{ box: [number, number, number, number], x: number, y: number } | null>(null); // <--- NEW STATE
+  const [newDefectCandidate, setNewDefectCandidate] = useState<{ box: [number, number, number, number], x: number, y: number } | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   // Simulation
@@ -58,14 +57,12 @@ export default function CeraSightDashboard() {
 
   useEffect(() => {
     setHighlightedDefect(null);
-    setNewDefectCandidate(null); // Clear manual draw if switching images
+    setNewDefectCandidate(null);
   }, [selectedIndex]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Disable nav if modals or drawing active
       if (batch.length === 0 || activeTab !== 'inspection' || isSimulating || isCameraOpen || newDefectCandidate) return;
-      
       if (e.key === 'ArrowRight') {
         setSelectedIndex(prev => Math.min(prev + 1, batch.length - 1));
       } else if (e.key === 'ArrowLeft') {
@@ -86,7 +83,7 @@ export default function CeraSightDashboard() {
     const runSimulationStep = async () => {
         if (selectedIndex < 0 || selectedIndex >= batch.length) {
             setIsSimulating(false);
-            toast.success("Simulation complete");
+            toast.success("Slideshow complete");
             return;
         }
 
@@ -101,7 +98,7 @@ export default function CeraSightDashboard() {
                 setSelectedIndex(prev => prev + 1);
             } else {
                 setIsSimulating(false);
-                toast.success("Simulation complete");
+                toast.success("Slideshow complete");
             }
         }, 2000); 
     };
@@ -147,7 +144,7 @@ export default function CeraSightDashboard() {
   const handleContextMenu = (e: React.MouseEvent, index: number) => {
       e.preventDefault();
       if(isSimulating) {
-          toast.warning("Pause simulation to edit defects.");
+          toast.warning("Pause slideshow to edit defects.");
           return;
       }
       setContextMenu({ x: e.clientX, y: e.clientY, defectIndex: index });
@@ -173,7 +170,6 @@ export default function CeraSightDashboard() {
     setContextMenu(null);
   };
 
-  // --- NEW: Manual Defect Drawing Handlers ---
   const handleDrawComplete = (box: [number, number, number, number], clientX: number, clientY: number) => {
       setNewDefectCandidate({ box, x: clientX, y: clientY });
   };
@@ -184,7 +180,6 @@ export default function CeraSightDashboard() {
       const { box } = newDefectCandidate;
       const item = batch[selectedIndex];
       
-      // Ensure we have a results object to add to
       if (!item.results) {
           toast.error("Please analyze the image before adding manual defects.");
           setNewDefectCandidate(null);
@@ -194,7 +189,6 @@ export default function CeraSightDashboard() {
       const newDefect = { class: className, score: 1.0, box };
       const updatedDefects = [...item.results.defects, newDefect];
 
-      // 1. Update Defects List
       setBatch(prev => {
           const newBatch = [...prev];
           newBatch[selectedIndex] = {
@@ -207,7 +201,6 @@ export default function CeraSightDashboard() {
           return newBatch;
       });
 
-      // 2. Generate Crops (Async)
       try {
           const newCrops = await generateCrops(item.src, updatedDefects);
           setBatch(prev => {
@@ -356,14 +349,14 @@ export default function CeraSightDashboard() {
   const toggleSimulation = () => {
       if (isSimulating) {
           setIsSimulating(false);
-          toast.info("Simulation paused");
+          toast.info("Slideshow paused");
       } else {
           if (selectedIndex === batch.length - 1 && batch[selectedIndex].status === 'done') {
               setSelectedIndex(0);
           }
           setIsSimulating(true);
           setActiveTab('inspection'); 
-          toast.info("Simulation started - Live Mode Active");
+          toast.info("Slideshow started");
       }
   };
 
@@ -395,7 +388,7 @@ export default function CeraSightDashboard() {
           {isSimulating && (
               <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-red-50 text-red-600 rounded-full border border-red-100 animate-pulse">
                   <Radio className="w-4 h-4" />
-                  <span className="text-xs font-bold tracking-wider">LIVE PRODUCTION MODE</span>
+                  <span className="text-xs font-bold tracking-wider">SLIDESHOW ACTIVE</span>
               </div>
           )}
 
@@ -412,7 +405,6 @@ export default function CeraSightDashboard() {
 
       {/* --- OVERLAYS --- */}
       
-      {/* 1. Context Menu (Right Click) */}
       {contextMenu && (
         <ContextMenu 
             x={contextMenu.x} 
@@ -422,7 +414,6 @@ export default function CeraSightDashboard() {
         />
       )}
 
-      {/* 2. Webcam Modal */}
       {isCameraOpen && (
         <WebcamModal 
             onClose={() => setIsCameraOpen(false)}
@@ -430,7 +421,6 @@ export default function CeraSightDashboard() {
         />
       )}
 
-      {/* 3. Class Selector (Manual Draw) */}
       {newDefectCandidate && (
          <ClassSelector 
              x={newDefectCandidate.x}
@@ -440,7 +430,7 @@ export default function CeraSightDashboard() {
          />
       )}
 
-      {/* --- MODALS --- */}
+      {/* MODALS */}
       <ConfigDrawer 
         isOpen={isConfigOpen} 
         onClose={() => setIsConfigOpen(false)}
@@ -479,7 +469,7 @@ export default function CeraSightDashboard() {
         </div>
       )}
 
-      {/* --- MAIN LAYOUT --- */}
+      {/* MAIN LAYOUT */}
       <main className="max-w-[1600px] mx-auto px-6 py-8 grid grid-cols-12 gap-8">
         
         {/* SIDEBAR */}
@@ -502,7 +492,7 @@ export default function CeraSightDashboard() {
         {/* CONTENT AREA */}
         <div className="col-span-12 lg:col-span-9 space-y-6">
           
-          {/* Tabs */}
+          {/* TABS */}
           <div className="flex items-center gap-1 bg-slate-200/50 p-1 rounded-xl w-fit">
               <button
                   onClick={() => setActiveTab('inspection')}
@@ -557,19 +547,19 @@ export default function CeraSightDashboard() {
                     </div>
                 </div>
                 
-                {/* Main Stage (Interactive) */}
+                {/* Main Stage */}
                 <MainStage 
                     ref={mainStageRef}
                     item={currentItem} 
                     highlightedIndex={highlightedDefect}
                     onDefectContextMenu={handleContextMenu}
-                    onDrawComplete={handleDrawComplete} // <--- Pass Draw Handler
+                    onDrawComplete={handleDrawComplete}
                 />
 
                 {/* Details Panel */}
                 {currentItem?.results && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
-                        {/* Defect Stats Chart */}
+                        {/* Stats */}
                         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-1">
                             <h3 className="text-sm font-semibold text-slate-700 mb-4 uppercase tracking-wider">Defect Breakdown</h3>
                             <div className="h-48 w-full -ml-4">
@@ -589,16 +579,14 @@ export default function CeraSightDashboard() {
                             </div>
                         </div>
 
-                        {/* Defect Thumbnails */}
+                        {/* Crops (Download Button REMOVED) */}
                         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-2">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Detected Crops</h3>
                                     <span className="text-[10px] text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">Right-click to reject</span>
                                 </div>
-                                <button onClick={() => downloadBatchCSV(batch)} className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
-                                    <Download className="w-3.5 h-3.5" /> Download Report
-                                </button>
+                                {/* BUTTON REMOVED FROM HERE */}
                             </div>
                             
                             {currentItem.crops.length > 0 ? (

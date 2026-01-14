@@ -16,7 +16,7 @@ interface SidebarProps {
   onAnalyze: () => void;
   onSelect: (index: number) => void;
   onRemove: (index: number, e: React.MouseEvent) => void;
-  onOpenChart: () => void; // Kept in interface to prevent breaking parent type, but unused in UI
+  onOpenChart: () => void;
   isSimulating: boolean;
   onToggleSimulation: () => void;
   onOpenCamera: () => void;
@@ -92,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
          </button>
 
-         {/* Simulation Button */}
+         {/* Slideshow Button (Renamed) */}
          {batch.length > 0 && (
              <button
                 onClick={onToggleSimulation}
@@ -104,9 +104,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 `}
              >
                 {isSimulating ? (
-                    <><Square className="w-3.5 h-3.5 fill-current" /> Stop Simulation</>
+                    <><Square className="w-3.5 h-3.5 fill-current" /> Stop Slideshow</>
                 ) : (
-                    <><Play className="w-3.5 h-3.5 fill-current" /> Live Production Mode</>
+                    <><Play className="w-3.5 h-3.5 fill-current" /> Start Slideshow</>
                 )}
              </button>
          )}
