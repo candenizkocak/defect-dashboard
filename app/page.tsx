@@ -4,8 +4,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, 
-  Download, X, Eye, LayoutDashboard, ScanLine, 
-  Radio 
+  X, Eye, LayoutDashboard, ScanLine, Radio 
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
@@ -16,7 +15,8 @@ import { toast } from 'sonner';
 // Internal Imports
 import { API_URL, DEFECT_COLORS } from './constants';
 import { BatchItem } from './types';
-import { generateCrops, downloadBatchCSV } from './utils/processing';
+import { generateCrops } from './utils/processing';
+import { exportYOLODataset } from './utils/exportDataset';
 
 // Components
 import { Sidebar } from './components/Sidebar';
@@ -24,7 +24,7 @@ import { MainStage, MainStageRef } from './components/MainStage';
 import { ConfigDrawer } from './components/ConfigDrawer';
 import { AnalyticsView } from './components/AnalyticsView';
 import { ContextMenu } from './components/ContextMenu';
-import { WebcamModal } from './components/WebcamModal'; // <--- Import
+import { WebcamModal } from './components/WebcamModal';
 
 export default function CeraSightDashboard() {
   // --- State ---
@@ -35,7 +35,7 @@ export default function CeraSightDashboard() {
   
   // Modals & Popups
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; defectIndex: number } | null>(null);
-  const [isCameraOpen, setIsCameraOpen] = useState(false); // <--- NEW STATE
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   // Simulation
   const [isSimulating, setIsSimulating] = useState(false);
@@ -195,7 +195,6 @@ export default function CeraSightDashboard() {
     });
   }, [selectedIndex]);
 
-  // --- NEW: Camera Capture Handler ---
   const handleCameraCapture = (file: File) => {
     const newId = Math.random().toString(36).substr(2, 9);
     const reader = new FileReader();
@@ -309,6 +308,16 @@ export default function CeraSightDashboard() {
       }
   };
 
+  const handleExportDataset = async () => {
+    try {
+        await exportYOLODataset(batch);
+        toast.success("Training dataset downloaded!");
+    } catch (e) {
+        console.error(e);
+        toast.error("Failed to generate dataset.");
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans overflow-x-hidden selection:bg-blue-100 selection:text-blue-900">
@@ -342,8 +351,7 @@ export default function CeraSightDashboard() {
         </div>
       </header>
 
-      {/* --- OVERLAYS --- */}
-      
+      {/* OVERLAYS */}
       {contextMenu && (
         <ContextMenu 
             x={contextMenu.x} 
@@ -360,7 +368,6 @@ export default function CeraSightDashboard() {
         />
       )}
 
-      {/* MODALS */}
       <ConfigDrawer 
         isOpen={isConfigOpen} 
         onClose={() => setIsConfigOpen(false)}
@@ -399,7 +406,7 @@ export default function CeraSightDashboard() {
         </div>
       )}
 
-      {/* MAIN GRID */}
+      {/* MAIN LAYOUT */}
       <main className="max-w-[1600px] mx-auto px-6 py-8 grid grid-cols-12 gap-8">
         
         <Sidebar 
@@ -414,12 +421,12 @@ export default function CeraSightDashboard() {
           onOpenChart={() => setIsChartModalOpen(true)}
           isSimulating={isSimulating}
           onToggleSimulation={toggleSimulation}
-          onOpenCamera={() => setIsCameraOpen(true)} // <--- Pass Camera Handler
+          onOpenCamera={() => setIsCameraOpen(true)}
+          onExportDataset={handleExportDataset}
         />
 
         <div className="col-span-12 lg:col-span-9 space-y-6">
           
-          {/* TAB BAR */}
           <div className="flex items-center gap-1 bg-slate-200/50 p-1 rounded-xl w-fit">
               <button
                   onClick={() => setActiveTab('inspection')}
@@ -445,7 +452,6 @@ export default function CeraSightDashboard() {
 
           {activeTab === 'inspection' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
-                {/* NAV */}
                 <div className="bg-white/80 backdrop-blur-sm border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div>
@@ -481,7 +487,6 @@ export default function CeraSightDashboard() {
                     onDefectContextMenu={handleContextMenu}
                 />
 
-                {/* DETAILS */}
                 {currentItem?.results && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
                         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-1">
@@ -509,9 +514,7 @@ export default function CeraSightDashboard() {
                                     <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Detected Crops</h3>
                                     <span className="text-[10px] text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">Right-click to reject</span>
                                 </div>
-                                <button onClick={() => downloadBatchCSV(batch)} className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
-                                    <Download className="w-3.5 h-3.5" /> Download Report
-                                </button>
+                                {/* REMOVED CSV BUTTON FROM HERE */}
                             </div>
                             
                             {currentItem.crops.length > 0 ? (

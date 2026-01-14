@@ -3,11 +3,9 @@ import React from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   Upload, Loader2, ZoomIn, Layers, Trash2, CheckCircle, 
-  BarChart3, Image as ImageIcon, Play, Square, Camera 
+  Image as ImageIcon, Play, Square, Camera, Database, FileCode 
 } from 'lucide-react';
 import { BatchItem } from '../types';
-import { ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { DEFECT_COLORS } from '../constants';
 
 interface SidebarProps {
   batch: BatchItem[];
@@ -18,16 +16,18 @@ interface SidebarProps {
   onAnalyze: () => void;
   onSelect: (index: number) => void;
   onRemove: (index: number, e: React.MouseEvent) => void;
-  onOpenChart: () => void;
+  onOpenChart: () => void; // Kept in interface to prevent breaking parent type, but unused in UI
   isSimulating: boolean;
   onToggleSimulation: () => void;
-  onOpenCamera: () => void; // <--- NEW PROP
+  onOpenCamera: () => void;
+  onExportDataset: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  batch, selectedIndex, isProcessing, globalStats,
-  onUpload, onAnalyze, onSelect, onRemove, onOpenChart,
-  isSimulating, onToggleSimulation, onOpenCamera
+  batch, selectedIndex, isProcessing,
+  onUpload, onAnalyze, onSelect, onRemove,
+  isSimulating, onToggleSimulation, onOpenCamera,
+  onExportDataset
 }) => {
   
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -63,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
          </div>
 
-         {/* NEW: Camera Button */}
+         {/* Camera Button */}
          <button
             onClick={onOpenCamera}
             disabled={isProcessing || isSimulating}
@@ -112,29 +112,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
          )}
       </div>
 
-      {/* 2. Mini Chart */}
-      {globalStats.total > 0 && (
-         <div 
-            onClick={onOpenChart}
-            className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm cursor-pointer hover:ring-2 hover:ring-blue-100 transition-all group flex-shrink-0"
-         >
-            <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                    <BarChart3 className="w-3.5 h-3.5" /> Batch Stats
-                </h3>
-            </div>
-            <div className="h-24 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={globalStats.data}>
-                        <Bar dataKey="value" radius={[2, 2, 0, 0]}>
-                            {globalStats.data.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={DEFECT_COLORS[entry.name] || DEFECT_COLORS['Unknown']} />
-                            ))}
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
-            </div>
-         </div>
+      {/* 2. Data Operations */}
+      {batch.some(i => i.status === 'done') && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex-shrink-0">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Database className="w-3.5 h-3.5" /> Data Ops
+            </h3>
+            <button
+                onClick={onExportDataset}
+                className="w-full py-2 rounded-lg text-xs font-medium bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 hover:border-slate-300 transition-all flex items-center justify-center gap-2"
+            >
+                <FileCode className="w-3.5 h-3.5" /> Export for Retraining (YOLO)
+            </button>
+            <p className="text-[10px] text-slate-400 mt-2 text-center">
+                Download dataset to fine-tune the AI model.
+            </p>
+        </div>
       )}
 
       {/* 3. Queue List */}

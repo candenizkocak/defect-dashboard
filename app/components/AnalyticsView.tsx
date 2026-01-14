@@ -6,12 +6,13 @@ import {
 } from 'recharts';
 import { 
   Layers, Activity, AlertOctagon, CheckCircle2, 
-  Plus, Minus, RefreshCw, FileDown 
+  Plus, Minus, RefreshCw, FileDown, FileSpreadsheet // <--- Added Icon
 } from 'lucide-react';
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
 import { BatchItem } from '../types';
 import { DEFECT_COLORS } from '../constants';
 import { generatePDFReport } from '../utils/reportGenerator';
+import { downloadBatchCSV } from '../utils/processing'; // <--- Added Import
 
 interface AnalyticsViewProps {
   batch: BatchItem[];
@@ -114,13 +115,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ batch }) => {
 
         const drawX = nx * w;
         const drawY = ny * h;
-        const drawW = Math.max(nw * w, 4); // Min 4px
-        const drawH = Math.max(nh * h, 4); // Min 4px
+        const drawW = Math.max(nw * w, 4);
+        const drawH = Math.max(nh * h, 4);
 
         ctx.shadowColor = "rgba(239, 68, 68, 0.5)";
         ctx.shadowBlur = 10;
 
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.35)'; // 35% Opacity
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.35)'; 
         ctx.fillRect(drawX, drawY, drawW, drawH);
         
         ctx.shadowBlur = 0; 
@@ -191,13 +192,24 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ batch }) => {
             <div className="flex items-center justify-between mb-1">
                 <h3 className="text-base font-bold text-slate-800">Spatial Heatmap</h3>
                 
-                {/* PDF Export Button */}
-                <button 
-                   onClick={() => generatePDFReport(batch, canvasRef.current)}
-                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-medium hover:bg-slate-700 transition-colors shadow-sm active:scale-95"
-                >
-                   <FileDown className="w-3.5 h-3.5" /> Export PDF Report
-                </button>
+                {/* --- REPORTING BUTTONS --- */}
+                <div className="flex items-center gap-2">
+                    {/* CSV Button (Light Green) */}
+                    <button 
+                       onClick={() => downloadBatchCSV(batch)}
+                       className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-medium hover:bg-green-100 transition-colors shadow-sm active:scale-95"
+                    >
+                       <FileSpreadsheet className="w-3.5 h-3.5" /> Download CSV Data
+                    </button>
+
+                    {/* PDF Button (Slate/Dark) */}
+                    <button 
+                       onClick={() => generatePDFReport(batch, canvasRef.current)}
+                       className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white border border-slate-900 rounded-lg text-xs font-medium hover:bg-slate-700 transition-colors shadow-sm active:scale-95"
+                    >
+                       <FileDown className="w-3.5 h-3.5" /> Export PDF Report
+                    </button>
+                </div>
             </div>
             <p className="text-xs text-slate-500 mb-6">Cumulative view of all defect locations.</p>
             
