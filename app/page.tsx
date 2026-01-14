@@ -378,8 +378,6 @@ export default function CeraSightDashboard() {
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-             <img src="/VitrA_logo.png" alt="Logo" className="h-8 w-auto" />
-             <div className="h-6 w-px bg-gray-200 mx-2"></div>
              <h1 className="font-bold text-xl tracking-tight text-slate-900">
                Cera<span className="text-blue-600">Sight</span>
              </h1>
@@ -579,14 +577,13 @@ export default function CeraSightDashboard() {
                             </div>
                         </div>
 
-                        {/* Crops (Download Button REMOVED) */}
+                        {/* Crops */}
                         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-2">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
                                     <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Detected Crops</h3>
                                     <span className="text-[10px] text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">Right-click to reject</span>
                                 </div>
-                                {/* BUTTON REMOVED FROM HERE */}
                             </div>
                             
                             {currentItem.crops.length > 0 ? (
