@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") //
+}
+
+// --- GROUP 1: IDENTITY & SESSION ---
+
+model Operator {
+  id        String    @id @default(uuid())
+  name      String    @unique // Username
+  password  String    // <--- NEW: Hashed Password
+  role      String    @default("OPERATOR") // ADMIN or OPERATOR
+  createdAt DateTime  @default(now())
+  sessions  Session[]
+}
+
+model Session {
+  id         String       @id @default(uuid())
+  operatorId String
+  operator   Operator     @relation(fields: [operatorId], references: [id])
+  startedAt  DateTime     @default(now())
+  clientInfo ClientInfo?
+  batches    Batch[]
+  actions    UserIntervention[]
+}
+
+model ClientInfo {
+  id        String  @id @default(uuid())
+  sessionId String  @unique
+  session   Session @relation(fields: [sessionId], references: [id])
+  userAgent String  // "Mozilla/5.0..."
+  platform  String  // "MacIntel", "Win32"
+}
+
+// --- GROUP 2: INPUT DATA ---
+
+model Batch {
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     Session  @relation(fields: [sessionId], references: [id])
+  uploadedAt  DateTime @default(now())
+  name        String   // "Batch-TIMESTAMP"
+  images      SourceImage[]
+  exports     DatasetExport[] // Many-to-Many via implicit or explicit
+}
+
+model SourceImage {
+  id        String   @id @default(uuid())
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id])
+  url       String   // S3/Blob URL
+  metadata  ImageMetadata?
+  runs      AnalysisRun[]
+  manuals   ManualAnnotation[]
+}
+
+model ImageMetadata {
+  id          String      @id @default(uuid())
+  imageId     String      @unique
+  image       SourceImage @relation(fields: [imageId], references: [id])
+  filename    String      // "tile_01.jpg"
+  sizeBytes   Int
+  mimeType    String      // "image/jpeg"
+  width       Int?        // Known after loading
+  height      Int?
+}
+
+// --- GROUP 3: CONFIGURATION SNAPSHOTTING ---
+
+model AiModelVersion {
+  id          String        @id @default(uuid())
+  name        String        // "YOLO11-Tile"
+  apiVersion  String        // "v1"
+  endpoint    String        // The API URL
+  runs        AnalysisRun[]
+}
+
+model AnalysisConfig {
+  id          String        @id @default(uuid())
+  confidence  Float         // 0.35
+  useRoi      Boolean       // true/false
+  hash        String        @unique // Unique hash of settings to de-dupe rows
+  runs        AnalysisRun[]
+}
+
+model QualityRule {
+  id                String          @id @default(uuid())
+  maxAllowedDefects Int             // The slider value
+  runs              AnalysisRun[]
+}
+
+// --- GROUP 4: ANALYSIS EXECUTION ---
+
+model AnalysisRun {
+  id              String         @id @default(uuid())
+  imageId         String
+  image           SourceImage    @relation(fields: [imageId], references: [id])
+  
+  // Configuration used for THIS specific run
+  modelId         String
+  model           AiModelVersion @relation(fields: [modelId], references: [id])
+  configId        String
+  config          AnalysisConfig @relation(fields: [configId], references: [id])
+  qualityRuleId   String
+  qualityRule     QualityRule    @relation(fields: [qualityRuleId], references: [id])
+  
+  timing          RunTiming?
+  status          RunStatus?
+  
+  // Results
+  detections      Detection[]
+  qualityResult   QualityResult?
+}
+
+model RunTiming {
+  id             String      @id @default(uuid())
+  runId          String      @unique
+  run            AnalysisRun @relation(fields: [runId], references: [id])
+  startedAt      DateTime
+  completedAt    DateTime
+  durationMs     Int         // Calculated
+}
+
+model RunStatus {
+  id             String      @id @default(uuid())
+  runId          String      @unique
+  run            AnalysisRun @relation(fields: [runId], references: [id])
+  status         String      // "SUCCESS", "ERROR"
+  errorMessage   String?
+}
+
+// --- GROUP 5: RESULTS (NORMALIZED) ---
+
+model DefectClass {
+  id          Int          @id @default(autoincrement())
+  label       String       @unique // "Crack", "Halo"
+  detections  Detection[]
+  manuals     ManualAnnotation[]
+}
+
+model Detection {
+  id            String      @id @default(uuid())
+  runId         String
+  run           AnalysisRun @relation(fields: [runId], references: [id])
+  
+  classId       Int
+  class         DefectClass @relation(fields: [classId], references: [id])
+  
+  box           BoundingBox?
+  score         DetectionConfidence?
+  intervention  UserIntervention? // Did user delete this?
+}
+
+model BoundingBox {
+  id            String      @id @default(uuid())
+  detectionId   String?     @unique
+  detection     Detection?  @relation(fields: [detectionId], references: [id])
+  manualId      String?     @unique
+  manual        ManualAnnotation? @relation(fields: [manualId], references: [id])
+  
+  x1            Int
+  y1            Int
+  x2            Int
+  y2            Int
+}
+
+model DetectionConfidence {
+  id            String      @id @default(uuid())
+  detectionId   String      @unique
+  detection     Detection   @relation(fields: [detectionId], references: [id])
+  score         Float       // 0.9854
+}
+
+// --- GROUP 6: HUMAN IN THE LOOP ---
+
+model ManualAnnotation {
+  id            String         @id @default(uuid())
+  imageId       String
+  image         SourceImage    @relation(fields: [imageId], references: [id])
+  classId       Int
+  class         DefectClass    @relation(fields: [classId], references: [id])
+  box           BoundingBox?
+  createdAt     DateTime       @default(now())
+}
+
+model UserIntervention {
+  id            String      @id @default(uuid())
+  sessionId     String
+  session       Session     @relation(fields: [sessionId], references: [id])
+  detectionId   String      @unique
+  detection     Detection   @relation(fields: [detectionId], references: [id])
+  actionType    String      // "REJECTED_FALSE_POSITIVE"
+  timestamp     DateTime    @default(now())
+}
+
+model QualityResult {
+  id            String      @id @default(uuid())
+  runId         String      @unique
+  run           AnalysisRun @relation(fields: [runId], references: [id])
+  passed        Boolean     // True/False
+  defectCount   Int         // Snapshot count at time of decision
+}
+
+model DatasetExport {
+  id            String      @id @default(uuid())
+  batchId       String
+  batch         Batch       @relation(fields: [batchId], references: [id])
+  exportedAt    DateTime    @default(now())
+  format        String      // "YOLO_TXT"
+  imageCount    Int
+}

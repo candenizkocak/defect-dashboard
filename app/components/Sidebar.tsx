@@ -3,7 +3,8 @@ import React from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   Upload, Loader2, ZoomIn, Layers, Trash2, CheckCircle, 
-  Image as ImageIcon, Play, Square, Camera, Database, FileCode 
+  Image as ImageIcon, Play, Square, Camera, Database, FileCode,
+  LogOut 
 } from 'lucide-react';
 import { BatchItem } from '../types';
 
@@ -21,13 +22,16 @@ interface SidebarProps {
   onToggleSimulation: () => void;
   onOpenCamera: () => void;
   onExportDataset: () => void;
+  // --- NEW PROPS ---
+  operatorName: string;
+  onLogout: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   batch, selectedIndex, isProcessing,
   onUpload, onAnalyze, onSelect, onRemove,
   isSimulating, onToggleSimulation, onOpenCamera,
-  onExportDataset
+  onExportDataset, operatorName, onLogout
 }) => {
   
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -92,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
          </button>
 
-         {/* Slideshow Button (Renamed) */}
+         {/* Slideshow Button */}
          {batch.length > 0 && (
              <button
                 onClick={onToggleSimulation}
@@ -182,6 +186,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
             ))}
          </div>
       </div>
+
+      {/* --- USER PROFILE FOOTER --- */}
+      <div className="mt-auto bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs uppercase border border-blue-200">
+                  {operatorName.substring(0,2)}
+              </div>
+              <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{operatorName}</span>
+                  <span className="text-[10px] text-green-600 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Online
+                  </span>
+              </div>
+          </div>
+          <button 
+            onClick={onLogout}
+            className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors border border-transparent hover:border-red-100"
+            title="Sign Out"
+          >
+              <LogOut className="w-4 h-4" />
+          </button>
+      </div>
+
     </aside>
   );
 };

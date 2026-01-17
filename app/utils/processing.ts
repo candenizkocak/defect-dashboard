@@ -1,10 +1,17 @@
 // app/utils/processing.ts
-import { BatchItem, Crop } from "../types";
+import { Crop } from "../types";
 
 export const generateCrops = (imgSrc: string, defects: any[]): Promise<Crop[]> => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
+    
+    // --- THE FIX ---
+    // This tells the browser to request CORS headers. 
+    // Without this, the canvas gets "tainted" when drawing remote images.
+    img.crossOrigin = "Anonymous"; 
+    
     img.src = imgSrc;
+
     img.onload = () => {
       const newCrops: Crop[] = [];
       const canvas = document.createElement('canvas');
@@ -29,14 +36,27 @@ export const generateCrops = (imgSrc: string, defects: any[]): Promise<Crop[]> =
         
         canvas.width = cw;
         canvas.height = ch;
-        ctx.drawImage(img, cx, cy, cw, ch, 0, 0, cw, ch);
-        newCrops.push({ src: canvas.toDataURL(), label: d.class, score: d.score });
+        
+        try {
+            ctx.drawImage(img, cx, cy, cw, ch, 0, 0, cw, ch);
+            newCrops.push({ src: canvas.toDataURL(), label: d.class, score: d.score });
+        } catch (e) {
+            console.error("Canvas Taint Error:", e);
+            // If it still fails, push a placeholder or skip
+        }
       });
       resolve(newCrops);
     };
-    img.onerror = () => resolve([]);
+
+    img.onerror = (err) => {
+        console.error("Failed to load image for cropping", err);
+        resolve([]);
+    };
   });
 };
+
+// ... (downloadBatchCSV remains the same) ...
+import { BatchItem } from "../types";
 
 export const downloadBatchCSV = (batch: BatchItem[]) => {
   const processedItems = batch.filter(item => item.status === 'done' && item.results?.defects);
@@ -46,7 +66,7 @@ export const downloadBatchCSV = (batch: BatchItem[]) => {
   let csvRows: string[] = [];
   
   processedItems.forEach(item => {
-      const rows = item.results!.defects.map((d) => [
+      const rows = item.results!.defects.map((d: any) => [
           item.file.name,
           d.class,
           (d.score * 100).toFixed(2) + "%",
