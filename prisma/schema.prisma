@@ -74,23 +74,26 @@ model ImageMetadata {
 
 model AiModelVersion {
   id          String        @id @default(uuid())
-  name        String        // "YOLO11-Tile"
-  apiVersion  String        // "v1"
-  endpoint    String        // The API URL
+  name        String        
+  apiVersion  String        
+  endpoint    String        
+  createdAt   DateTime      @default(now()) // <--- ADD THIS
   runs        AnalysisRun[]
 }
 
 model AnalysisConfig {
   id          String        @id @default(uuid())
-  confidence  Float         // 0.35
-  useRoi      Boolean       // true/false
-  hash        String        @unique // Unique hash of settings to de-dupe rows
+  confidence  Float         
+  useRoi      Boolean       
+  hash        String        @unique 
+  createdAt   DateTime      @default(now()) // <--- ADD THIS
   runs        AnalysisRun[]
 }
 
 model QualityRule {
   id                String          @id @default(uuid())
-  maxAllowedDefects Int             // The slider value
+  maxAllowedDefects Int             
+  createdAt         DateTime        @default(now()) // <--- ADD THIS
   runs              AnalysisRun[]
 }
 

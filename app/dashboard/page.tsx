@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -6,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { 
   Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, 
   Download, X, Eye, LayoutDashboard, ScanLine, 
-  Radio, Archive as ArchiveIcon, LogOut // <--- Imported LogOut
+  Radio, Archive as ArchiveIcon, LogOut
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
@@ -44,24 +43,21 @@ export default function Dashboard() {
     const user = localStorage.getItem('cerasight_user');
     
     if (!token || !user) {
-        toast.error("Unauthorized access.");
         router.replace('/'); 
     } else {
         setAuthToken(token);
         setOperatorName(user);
         
-        // FETCH GLOBAL RULES FROM ADMIN
+        // FETCH GLOBAL RULES
         fetch('/api/admin/settings')
             .then(res => res.json())
             .then(data => {
-                if (data.confThreshold) {
-                    setConfThreshold(data.confThreshold);
-                    setUseRoi(data.useRoi);
-                    setMaxAllowedDefects(data.maxAllowedDefects);
-                    toast.success("Global inspection rules applied.");
-                }
+                // Check if properties exist specifically to avoid falsy zero checks
+                if (data.confThreshold !== undefined) setConfThreshold(data.confThreshold);
+                if (data.useRoi !== undefined) setUseRoi(data.useRoi);
+                if (data.maxAllowedDefects !== undefined) setMaxAllowedDefects(data.maxAllowedDefects);
             })
-            .catch(() => toast.error("Failed to load global settings"));
+            .catch(() => toast.error("Configuration sync failed."));
     }
   }, [router]);
 
@@ -195,6 +191,7 @@ export default function Dashboard() {
       }
       localStorage.removeItem('cerasight_token');
       localStorage.removeItem('cerasight_user');
+      localStorage.removeItem('cerasight_role');
       toast.info("Signed out successfully");
       router.push('/');
   };
@@ -268,7 +265,7 @@ export default function Dashboard() {
       if (error) throw error;
       const { data } = supabase.storage.from('tiles').getPublicUrl(filePath);
       return {
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(), 
         file: file,
         src: data.publicUrl, 
         status: 'idle',
@@ -300,7 +297,6 @@ export default function Dashboard() {
     setBatch(newBatch);
     if (newBatch.length === 0) setSelectedIndex(-1);
     else if (selectedIndex >= index) setSelectedIndex(Math.max(0, selectedIndex - 1));
-    toast.info("Image removed from queue");
   };
 
   const handleDefectFocus = (index: number) => {
@@ -417,7 +413,6 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-4">
              
-             {/* --- MOVED: USER PROFILE & LOGOUT --- */}
              <div className="flex items-center gap-3 pl-4 border-r border-gray-200 pr-4">
                 <div className="text-right hidden sm:block">
                     <p className="text-xs font-bold text-slate-700">{operatorName}</p>
@@ -455,12 +450,11 @@ export default function Dashboard() {
         useRoi={useRoi} setUseRoi={setUseRoi}
         maxAllowedDefects={maxAllowedDefects} setMaxAllowedDefects={setMaxAllowedDefects}
         operatorName={operatorName} setOperatorName={() => {}}
-        readOnly={true}
+        readOnly={true} 
       />
 
       {isChartModalOpen && (
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-           {/* Chart Modal Content */}
            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
               <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                  <div>
@@ -532,7 +526,7 @@ export default function Dashboard() {
 
           {activeTab === 'inspection' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
-                {/* Image Navigation */}
+                {/* NAV */}
                 <div className="bg-white/80 backdrop-blur-sm border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div>
@@ -562,7 +556,6 @@ export default function Dashboard() {
                     </div>
                 </div>
                 
-                {/* Main Stage */}
                 <MainStage 
                     ref={mainStageRef}
                     item={currentItem} 
