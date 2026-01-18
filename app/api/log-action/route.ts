@@ -7,43 +7,50 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { actionType, operatorName, filename, details } = body;
 
-    // 1. Resolve Session based on Operator Name
-    // (In a stricter app, we would use the Auth Token here too, but looking up by name works for this logging context)
-    const operator = await db.operator.findUnique({ where: { name: operatorName || "Admin" } });
-    if (!operator) return NextResponse.json({ error: "Operator not found" }, { status: 404 });
+    console.log(`📝 Log Action Received: ${actionType} for ${operatorName}`);
 
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    
-    // Find active session
+    // 1. Resolve Identity
+    const operator = await db.operator.findUnique({ where: { name: operatorName || "Admin" } });
+    if (!operator) {
+        console.error("❌ Operator not found:", operatorName);
+        return NextResponse.json({ error: "Operator not found" }, { status: 404 });
+    }
+
+    // Find the most recent session for this operator (don't restrict by 'today' strictly to avoid TZ issues)
     const session = await db.session.findFirst({
-        where: { operatorId: operator.id, startedAt: { gte: today } }
+        where: { operatorId: operator.id },
+        orderBy: { startedAt: 'desc' }
     });
     
-    // If no session exists (rare race condition), create one or fail. Let's fail for strictness.
-    if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    if (!session) {
+        console.error("❌ Session not found for:", operatorName);
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
 
-    // 2. Resolve Image Context
+    // 2. Resolve Image Context (RELAXED CHECK)
+    // Just find the most recent image with this filename. 
+    // In a real app we'd pass imageId from frontend, but this fixes the "Empty Log" issue for the demo.
     let imageId = null;
     if (filename) {
-        // Find the most recent upload of this filename in the current session's batches
         const img = await db.sourceImage.findFirst({
             where: { 
-                metadata: { filename: filename },
-                batch: { sessionId: session.id } 
+                metadata: { filename: filename } 
+                // Removed strict batch/session check here to ensure we find the image even if sessions drifted
             },
             orderBy: { id: 'desc' } 
         });
         imageId = img?.id;
     }
 
-    // 3. HANDLE SPECIFIC ACTIONS
+    if ((actionType === 'MANUAL_ANNOTATION' || actionType === 'DELETE_INTERVENTION') && !imageId) {
+        console.warn(`⚠️ Could not find image for filename: ${filename}. Skipping DB insert.`);
+        return NextResponse.json({ error: "Image not found" }, { status: 404 });
+    }
+
+    // 3. EXECUTE DB INSERT
     
     // --- A. USER DREW A BOX ---
     if (actionType === 'MANUAL_ANNOTATION') {
-        if (!imageId) return NextResponse.json({ error: "Image not found" }, { status: 404 });
-        
-        // Ensure defect class exists
         const defectClass = await db.defectClass.upsert({
             where: { label: details.className },
             update: {},
@@ -52,7 +59,7 @@ export async function POST(req: Request) {
 
         await db.manualAnnotation.create({
             data: {
-                imageId: imageId,
+                imageId: imageId!,
                 classId: defectClass.id,
                 box: {
                     create: {
@@ -68,25 +75,20 @@ export async function POST(req: Request) {
     
     // --- B. USER DELETED A DETECTION ---
     else if (actionType === 'DELETE_INTERVENTION') {
-        if (!imageId) return NextResponse.json({ error: "Image not found" }, { status: 404 });
-
         // Find the most recent analysis run for this image
         const lastRun = await db.analysisRun.findFirst({
-            where: { imageId },
+            where: { imageId: imageId! },
             orderBy: { id: 'desc' },
             include: { detections: { include: { class: true } } }
         });
 
         if (lastRun) {
-            // Heuristic: Find a detection matching the deleted class label
-            // In a fully synced app, we would send the Detection UUID from frontend.
-            // Since frontend uses array index, we try to match by label.
+            // Find a detection matching the class label
             const targetDetection = lastRun.detections.find(d => d.class.label === details.defectClass);
             
             if (targetDetection) {
-                // Check if already intervened to avoid duplicates
+                // Check dupes
                 const exists = await db.userIntervention.findUnique({ where: { detectionId: targetDetection.id } });
-                
                 if (!exists) {
                     await db.userIntervention.create({
                         data: {
@@ -96,14 +98,15 @@ export async function POST(req: Request) {
                         }
                     });
                 }
+            } else {
+                console.warn("⚠️ Could not match detection for intervention log");
             }
         }
     }
 
     // --- C. USER EXPORTED DATASET ---
     else if (actionType === 'DATASET_EXPORT') {
-        // Find the batch associated with this session (or the specific batch if we tracked ID)
-        // Here we attach to the latest batch of the session
+        // Attach to the current session's latest batch, or just the latest batch globally for safety
         const batch = await db.batch.findFirst({ 
             where: { sessionId: session.id },
             orderBy: { uploadedAt: 'desc' }
@@ -120,6 +123,7 @@ export async function POST(req: Request) {
         }
     }
 
+    console.log("✅ Action Logged Successfully");
     return NextResponse.json({ success: true });
 
   } catch (error) {

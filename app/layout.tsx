@@ -15,7 +15,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}
+      suppressHydrationWarning={true}
+      >
         {children}
         <Toaster position="top-right" richColors /> {/* <--- Add this */}
       </body>

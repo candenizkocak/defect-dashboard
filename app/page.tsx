@@ -1,14 +1,12 @@
-// app/page.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, User, UserPlus, ArrowRight, ShieldCheck, Activity, Layers } from 'lucide-react';
+import { Lock, User, ArrowRight, ShieldCheck, Activity, Layers, LayoutDashboard } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function LandingPage() {
   const router = useRouter();
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(false);
   
   // Form State
@@ -18,16 +16,20 @@ export default function LandingPage() {
   // Check if already logged in
   useEffect(() => {
     const token = localStorage.getItem('cerasight_token');
-    if (token) router.push('/dashboard');
+    const role = localStorage.getItem('cerasight_role');
+    
+    if (token && role) {
+      if (role === 'ADMIN') router.push('/admin');
+      else router.push('/dashboard');
+    }
   }, [router]);
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
 
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -37,22 +39,24 @@ export default function LandingPage() {
 
       if (!res.ok) throw new Error(data.error || "Authentication failed");
 
-      if (authMode === 'register') {
-        toast.success("Account created! Please log in.");
-        setAuthMode('login');
-        setPassword("");
+      // 1. SAVE SESSION
+      localStorage.setItem('cerasight_token', data.token);
+      localStorage.setItem('cerasight_user', data.operator);
+      localStorage.setItem('cerasight_role', data.role);
+      
+      toast.success(`Welcome back, ${data.operator}`);
+      
+      // 2. ROLE BASED REDIRECT
+      // We use window.location to ensure a hard refresh so state is clean
+      if (data.role === 'ADMIN') {
+          window.location.href = '/admin';
       } else {
-        // SAVE SESSION
-        localStorage.setItem('cerasight_token', data.token);
-        localStorage.setItem('cerasight_user', data.operator);
-        
-        toast.success("Identity Verified. Redirecting...");
-        
-        // Hard redirect to force a clean state load of the dashboard
-        window.location.href = '/dashboard';
+          window.location.href = '/dashboard';
       }
+
     } catch (err: any) {
       toast.error(err.message);
+      setPassword(""); // Clear password on fail
     } finally {
       setLoading(false);
     }
@@ -64,13 +68,13 @@ export default function LandingPage() {
         
         {/* LEFT: Branding & Marketing */}
         <div className="bg-slate-900 text-white p-12 flex flex-col justify-between relative overflow-hidden">
-          {/* Abstract BG */}
+          {/* Abstract Background Effects */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full blur-[100px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-600 rounded-full blur-[100px] opacity-20 translate-y-1/2 -translate-x-1/2"></div>
           
           <div className="relative z-10">
             <h1 className="text-3xl font-bold tracking-tight mb-2">Cera<span className="text-blue-500">Sight</span></h1>
-            <p className="text-slate-400 text-sm">Industrial Quality Control Platform</p>
+            <p className="text-slate-400 text-sm">Enterprise Quality Control Platform</p>
           </div>
 
           <div className="space-y-8 relative z-10">
@@ -79,8 +83,8 @@ export default function LandingPage() {
                 <ShieldCheck className="w-6 h-6 text-green-400" />
               </div>
               <div>
-                <h3 className="font-bold text-lg">Zero-Trust Security</h3>
-                <p className="text-slate-400 text-sm">Role-based access control with encrypted session management.</p>
+                <h3 className="font-bold text-lg">Zero-Trust Access</h3>
+                <p className="text-slate-400 text-sm">Secure role-based authentication with audit logging.</p>
               </div>
             </div>
             <div className="flex gap-4 items-start">
@@ -89,7 +93,7 @@ export default function LandingPage() {
               </div>
               <div>
                 <h3 className="font-bold text-lg">Real-time Telemetry</h3>
-                <p className="text-slate-400 text-sm">Live defect tracking with sub-millisecond latency metrics.</p>
+                <p className="text-slate-400 text-sm">Live defect tracking with precision metrics.</p>
               </div>
             </div>
             <div className="flex gap-4 items-start">
@@ -98,7 +102,7 @@ export default function LandingPage() {
               </div>
               <div>
                 <h3 className="font-bold text-lg">Data Sovereignty</h3>
-                <p className="text-slate-400 text-sm">Full database normalization for audit trails and retraining.</p>
+                <p className="text-slate-400 text-sm">Full database normalization for compliance and retraining.</p>
               </div>
             </div>
           </div>
@@ -108,19 +112,22 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* RIGHT: Auth Form */}
+        {/* RIGHT: Login Form */}
         <div className="p-12 flex flex-col justify-center">
           <div className="w-full max-w-sm mx-auto space-y-8">
             <div className="text-center">
+              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                 <LayoutDashboard className="w-8 h-8 text-slate-700" />
+              </div>
               <h2 className="text-2xl font-bold text-slate-900">
-                {authMode === 'login' ? 'Welcome Back' : 'Create Operator ID'}
+                Authorized Access
               </h2>
               <p className="text-slate-500 mt-2 text-sm">
-                {authMode === 'login' ? 'Please sign in to access the dashboard.' : 'Register a new device on the network.'}
+                Enter your secure credentials to proceed.
               </p>
             </div>
 
-            <form onSubmit={handleAuth} className="space-y-5">
+            <form onSubmit={handleLogin} className="space-y-5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Operator ID</label>
                 <div className="relative">
@@ -131,7 +138,7 @@ export default function LandingPage() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all font-medium"
-                    placeholder="e.g. admin"
+                    placeholder="e.g. sysadmin"
                   />
                 </div>
               </div>
@@ -157,18 +164,15 @@ export default function LandingPage() {
                 disabled={loading}
                 className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait"
               >
-                {loading ? 'Authenticating...' : (authMode === 'login' ? 'Sign In' : 'Register Device')}
+                {loading ? 'Verifying Identity...' : 'Sign In'}
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </button>
             </form>
-
+            
             <div className="text-center pt-4 border-t border-gray-100">
-              <button 
-                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-                className="text-sm text-slate-500 hover:text-slate-900 font-medium flex items-center justify-center gap-2 w-full transition-colors"
-              >
-                {authMode === 'login' ? <><UserPlus className="w-4 h-4" /> New Operator? Register</> : 'Already have an ID? Login'}
-              </button>
+               <p className="text-xs text-slate-400">
+                 Authorized Personnel Only. <br/>Contact System Administrator for access.
+               </p>
             </div>
           </div>
         </div>

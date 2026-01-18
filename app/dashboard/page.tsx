@@ -1,12 +1,11 @@
-// app/dashboard/page.tsx
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation'; // <--- Import Router
+import { useRouter } from 'next/navigation';
 import { 
   Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, 
   Download, X, Eye, LayoutDashboard, ScanLine, 
-  Radio 
+  Radio, Archive as ArchiveIcon 
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
@@ -14,47 +13,62 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 
-// Adjust import paths since we are now in /dashboard/
+// Internal Imports
 import { API_URL, DEFECT_COLORS } from '../constants';
 import { BatchItem } from '../types';
 import { generateCrops, downloadBatchCSV } from '../utils/processing';
 import { exportYOLODataset } from '../utils/exportDataset';
 import { supabase } from '@/app/lib/supabase';
 
+// Components
 import { Sidebar } from '../components/Sidebar';
 import { MainStage, MainStageRef } from '../components/MainStage';
 import { ConfigDrawer } from '../components/ConfigDrawer';
 import { AnalyticsView } from '../components/AnalyticsView';
+import { ArchiveView } from '../components/ArchiveView';
 import { ContextMenu } from '../components/ContextMenu';
 import { WebcamModal } from '../components/WebcamModal';
 import { ClassSelector } from '../components/ClassSelector';
 
 export default function Dashboard() {
-  const router = useRouter(); // <--- ROUTER
+  const router = useRouter();
 
   // --- Auth State ---
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [operatorName, setOperatorName] = useState("Unknown");
 
-  // --- SECURITY GUARD (No sugarcoating: Get out if not logged in) ---
+  // --- Security Check & Global Config Fetch ---
   useEffect(() => {
     const token = localStorage.getItem('cerasight_token');
     const user = localStorage.getItem('cerasight_user');
     
     if (!token || !user) {
         toast.error("Unauthorized access.");
-        router.replace('/'); // Redirect to Landing
+        router.replace('/'); 
     } else {
         setAuthToken(token);
         setOperatorName(user);
+        
+        // FETCH GLOBAL RULES FROM ADMIN
+        fetch('/api/admin/settings')
+            .then(res => res.json())
+            .then(data => {
+                if (data.confThreshold) {
+                    setConfThreshold(data.confThreshold);
+                    setUseRoi(data.useRoi);
+                    setMaxAllowedDefects(data.maxAllowedDefects);
+                    toast.success("Global inspection rules applied.");
+                }
+            })
+            .catch(() => toast.error("Failed to load global settings"));
     }
   }, [router]);
 
-  // --- Existing App State ---
+  // --- App State ---
   const [batch, setBatch] = useState<BatchItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [highlightedDefect, setHighlightedDefect] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'inspection' | 'analytics'>('inspection');
+  const [activeTab, setActiveTab] = useState<'inspection' | 'analytics' | 'archive'>('inspection');
   
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; defectIndex: number } | null>(null);
   const [newDefectCandidate, setNewDefectCandidate] = useState<{ box: [number, number, number, number], x: number, y: number } | null>(null);
@@ -66,16 +80,18 @@ export default function Dashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
+  
+  // These are now controlled by Admin settings mostly
   const [confThreshold, setConfThreshold] = useState(0.35);
   const [useRoi, setUseRoi] = useState(true);
-  
   const [maxAllowedDefects, setMaxAllowedDefects] = useState(0);
+  
   const [currentClientBatchId, setCurrentClientBatchId] = useState<string>("");
 
   const mainStageRef = useRef<MainStageRef>(null);
   const currentItem = selectedIndex >= 0 ? batch[selectedIndex] : null;
 
-  // --- LOGGING ---
+  // --- Helpers ---
   const logDbAction = async (actionType: string, details: any = {}) => {
     if (!authToken) return;
     fetch('/api/log-action', {
@@ -90,7 +106,7 @@ export default function Dashboard() {
     }).catch(e => console.error(e));
   };
 
-  // --- EFFECTS ---
+  // --- Effects ---
   useEffect(() => {
     setHighlightedDefect(null);
     setNewDefectCandidate(null);
@@ -109,7 +125,6 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [batch.length, activeTab, isSimulating, isCameraOpen, newDefectCandidate]);
 
-  // Slideshow Logic
   useEffect(() => {
     if (!isSimulating) {
       if (simulationTimerRef.current) clearTimeout(simulationTimerRef.current);
@@ -140,7 +155,7 @@ export default function Dashboard() {
     };
   }, [isSimulating, selectedIndex, batch]);
 
-  // --- STATS ---
+  // --- Stats ---
   const globalStats = useMemo(() => {
     const counts: {[key: string]: number} = {};
     let total = 0;
@@ -169,7 +184,7 @@ export default function Dashboard() {
       .sort((a, b) => b.value - a.value); 
   }, [currentItem]);
 
-  // --- HANDLERS ---
+  // --- Handlers ---
 
   const handleLogout = async () => {
       if (authToken) {
@@ -181,11 +196,8 @@ export default function Dashboard() {
       localStorage.removeItem('cerasight_token');
       localStorage.removeItem('cerasight_user');
       toast.info("Signed out successfully");
-      router.push('/'); // Redirect to Landing
+      router.push('/');
   };
-
-  // ... (Keep existing Handlers: handleContextMenu, handleDeleteDefect, handleDrawComplete, handleAddDefect, handleUpload, handleCameraCapture, removeImage, handleDefectFocus) ...
-  // Make sure to copy them from previous `page.tsx`. I will condense them here for brevity but ensure you keep the exact logic.
 
   const handleContextMenu = (e: React.MouseEvent, index: number) => {
       e.preventDefault();
@@ -256,7 +268,7 @@ export default function Dashboard() {
       if (error) throw error;
       const { data } = supabase.storage.from('tiles').getPublicUrl(filePath);
       return {
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(), // <--- FIX: Use UUID instead of Math.random
         file: file,
         src: data.publicUrl, 
         status: 'idle',
@@ -288,6 +300,7 @@ export default function Dashboard() {
     setBatch(newBatch);
     if (newBatch.length === 0) setSelectedIndex(-1);
     else if (selectedIndex >= index) setSelectedIndex(Math.max(0, selectedIndex - 1));
+    toast.info("Image removed from queue");
   };
 
   const handleDefectFocus = (index: number) => {
@@ -356,9 +369,40 @@ export default function Dashboard() {
     } catch (e) { toast.error("Export failed"); }
   };
 
+  // --- NEW: Load from Archive ---
+  const handleLoadFromHistory = async (historyItem: any) => {
+      try {
+          toast.loading("Restoring inspection context...");
+
+          // 1. Create new item with a FRESH UUID
+          const newItem: BatchItem = {
+              id: crypto.randomUUID(), // <--- FIX: Ensure unique key
+              file: new File([], historyItem.filename), 
+              src: historyItem.imageUrl,
+              status: 'done',
+              results: historyItem.results,
+              crops: []
+          };
+
+          // Regenerate crops locally
+          const newCrops = await generateCrops(historyItem.imageUrl, historyItem.results.defects);
+          newItem.crops = newCrops;
+
+          setBatch(prev => [newItem, ...prev]); 
+          setSelectedIndex(0); 
+          setActiveTab('inspection'); 
+          
+          toast.dismiss();
+          toast.success("History item loaded");
+
+      } catch (e) {
+          console.error(e);
+          toast.error("Failed to load history item");
+      }
+  };
+
   // --- RENDER ---
-  // Only render Dashboard content if we have a token (otherwise the useEffect redirects)
-  if (!authToken) return null;
+  if (!authToken) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">Initializing secure session...</div>;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans overflow-x-hidden selection:bg-blue-100 selection:text-blue-900">
@@ -400,7 +444,8 @@ export default function Dashboard() {
         confThreshold={confThreshold} setConfThreshold={setConfThreshold}
         useRoi={useRoi} setUseRoi={setUseRoi}
         maxAllowedDefects={maxAllowedDefects} setMaxAllowedDefects={setMaxAllowedDefects}
-        operatorName={operatorName} setOperatorName={setOperatorName}
+        operatorName={operatorName} setOperatorName={() => {}}
+        readOnly={true}
       />
 
       {isChartModalOpen && (
@@ -466,11 +511,19 @@ export default function Dashboard() {
               >
                   <LayoutDashboard className="w-4 h-4" /> Analytics
               </button>
+              <button
+                  onClick={() => setActiveTab('archive')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all
+                      ${activeTab === 'archive' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}
+                  `}
+              >
+                  <ArchiveIcon className="w-4 h-4" /> History
+              </button>
           </div>
 
           {activeTab === 'inspection' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
-                {/* NAV */}
+                {/* Image Navigation */}
                 <div className="bg-white/80 backdrop-blur-sm border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div>
@@ -479,10 +532,11 @@ export default function Dashboard() {
                         </h2>
                         {currentItem?.status === 'done' ? (
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border mt-1 
-                                ${currentItem.results?.defects.length ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'}
+                                ${currentItem.results?.defects.length > maxAllowedDefects ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}
                             `}>
                                 <AlertTriangle className="w-3 h-3" />
-                                {currentItem.results?.defects.length || 0} Defects Found
+                                {currentItem.results?.defects.length > maxAllowedDefects ? "REJECTED" : "ACCEPTED"} 
+                                <span className="opacity-60 ml-1">({currentItem.results?.defects.length} Defects)</span>
                             </span>
                         ) : (
                             <p className="text-xs text-slate-400 mt-0.5">Select an image from the queue</p>
@@ -499,6 +553,7 @@ export default function Dashboard() {
                     </div>
                 </div>
                 
+                {/* Main Stage */}
                 <MainStage 
                     ref={mainStageRef}
                     item={currentItem} 
@@ -582,8 +637,13 @@ export default function Dashboard() {
                     </div>
                 )}
             </div>
-          ) : (
+          ) : activeTab === 'analytics' ? (
             <AnalyticsView batch={batch} />
+          ) : (
+            <ArchiveView 
+                token={authToken} 
+                onLoadForEditing={handleLoadFromHistory} 
+            />
           )}
 
         </div>
