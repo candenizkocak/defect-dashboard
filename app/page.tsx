@@ -1,8 +1,9 @@
+// app/page.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, User, ArrowRight, ShieldCheck, Activity, Layers, LayoutDashboard } from 'lucide-react';
+import { Lock, User, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function LandingPage() {
@@ -47,7 +48,6 @@ export default function LandingPage() {
       toast.success(`Welcome back, ${data.operator}`);
       
       // 2. ROLE BASED REDIRECT
-      // We use window.location to ensure a hard refresh so state is clean
       if (data.role === 'ADMIN') {
           window.location.href = '/admin';
       } else {
@@ -63,120 +63,96 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-5xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-2 min-h-[600px]">
+    <div className="min-h-screen w-full flex bg-white">
+      
+      {/* LEFT SIDE: Full Height Image */}
+      {/* Hidden on mobile, takes up 55% of width on large screens */}
+      <div className="hidden md:block md:w-1/2 lg:w-[55%] relative bg-slate-100">
+        <img 
+          src="/color_2.0_shelfs.png" 
+          alt="Studio Setting" 
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        {/* Optional: subtle overlay if image is too bright, currently transparent */}
+        <div className="absolute inset-0 bg-black/5"></div> 
+      </div>
+
+      {/* RIGHT SIDE: Login Form */}
+      <div className="w-full md:w-1/2 lg:w-[45%] flex flex-col justify-center items-center p-8 md:p-16 lg:p-24 bg-white">
         
-        {/* LEFT: Branding & Marketing */}
-        <div className="bg-slate-900 text-white p-12 flex flex-col justify-between relative overflow-hidden">
-          {/* Abstract Background Effects */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600 rounded-full blur-[100px] opacity-20 -translate-y-1/2 translate-x-1/2"></div>
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-600 rounded-full blur-[100px] opacity-20 translate-y-1/2 -translate-x-1/2"></div>
+        <div className="w-full max-w-[400px] space-y-10">
           
-          <div className="relative z-10">
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Cera<span className="text-blue-500">Sight</span></h1>
-            <p className="text-slate-400 text-sm">Enterprise Quality Control Platform</p>
+          {/* Header */}
+          <div className="text-center space-y-3">
+            <h1 className="text-4xl font-bold tracking-tight text-slate-900">
+              Cera<span className="text-blue-700">Sight</span>
+            </h1>
+            <p className="text-slate-500 text-sm font-medium">
+              Enter your secure credentials to proceed.
+            </p>
           </div>
 
-          <div className="space-y-8 relative z-10">
-            <div className="flex gap-4 items-start">
-              <div className="p-3 bg-white/10 rounded-xl">
-                <ShieldCheck className="w-6 h-6 text-green-400" />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">Zero-Trust Access</h3>
-                <p className="text-slate-400 text-sm">Secure role-based authentication with audit logging.</p>
-              </div>
-            </div>
-            <div className="flex gap-4 items-start">
-              <div className="p-3 bg-white/10 rounded-xl">
-                <Activity className="w-6 h-6 text-blue-400" />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">Real-time Telemetry</h3>
-                <p className="text-slate-400 text-sm">Live defect tracking with precision metrics.</p>
-              </div>
-            </div>
-            <div className="flex gap-4 items-start">
-              <div className="p-3 bg-white/10 rounded-xl">
-                <Layers className="w-6 h-6 text-purple-400" />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">Data Sovereignty</h3>
-                <p className="text-slate-400 text-sm">Full database normalization for compliance and retraining.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-xs text-slate-500 relative z-10">
-            &copy; 2026 CeraSight Systems. Enterprise Edition v2.1.
-          </div>
-        </div>
-
-        {/* RIGHT: Login Form */}
-        <div className="p-12 flex flex-col justify-center">
-          <div className="w-full max-w-sm mx-auto space-y-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                 <LayoutDashboard className="w-8 h-8 text-slate-700" />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-900">
-                Authorized Access
-              </h2>
-              <p className="text-slate-500 mt-2 text-sm">
-                Enter your secure credentials to proceed.
-              </p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Operator ID</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input 
-                    type="text" 
-                    required
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all font-medium"
-                    placeholder="e.g. sysadmin"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input 
-                    type="password" 
-                    required
-                    minLength={4}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all font-medium"
-                    placeholder="••••••••"
-                  />
-                </div>
-              </div>
-
-              <button 
-                type="submit" 
-                disabled={loading}
-                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait"
-              >
-                {loading ? 'Verifying Identity...' : 'Sign In'}
-                {!loading && <ArrowRight className="w-4 h-4" />}
-              </button>
-            </form>
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-6">
             
-            <div className="text-center pt-4 border-t border-gray-100">
-               <p className="text-xs text-slate-400">
-                 Authorized Personnel Only. <br/>Contact System Administrator for access.
-               </p>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
+                Operator ID
+              </label>
+              <div className="relative group">
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-600 transition-colors">
+                  <User className="w-5 h-5" />
+                </div>
+                <input 
+                  type="text" 
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-slate-900 placeholder:text-slate-300 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 outline-none transition-all font-medium"
+                  placeholder="e.g. sysadmin"
+                />
+              </div>
             </div>
-          </div>
-        </div>
 
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">
+                Password
+              </label>
+              <div className="relative group">
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-600 transition-colors">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <input 
+                  type="password" 
+                  required
+                  minLength={4}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-slate-900 placeholder:text-slate-300 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 outline-none transition-all font-medium"
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full py-3.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl transition-all shadow-lg shadow-slate-900/10 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-wait mt-2"
+            >
+              {loading ? 'Authenticating...' : 'Sign In'}
+              {!loading && <ArrowRight className="w-4 h-4" />}
+            </button>
+          </form>
+
+          {/* Footer */}
+          <div className="text-center">
+             <p className="text-xs text-slate-400 leading-relaxed">
+               Authorized Personnel Only. <br/>
+               Contact System Administrator for access.
+             </p>
+          </div>
+
+        </div>
       </div>
     </div>
   );
