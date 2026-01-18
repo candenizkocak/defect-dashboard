@@ -1,3 +1,4 @@
+// app/dashboard/page.tsx
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -5,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { 
   Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, 
   Download, X, Eye, LayoutDashboard, ScanLine, 
-  Radio, Archive as ArchiveIcon 
+  Radio, Archive as ArchiveIcon, LogOut // <--- Imported LogOut
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
@@ -81,7 +82,6 @@ export default function Dashboard() {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   
-  // These are now controlled by Admin settings mostly
   const [confThreshold, setConfThreshold] = useState(0.35);
   const [useRoi, setUseRoi] = useState(true);
   const [maxAllowedDefects, setMaxAllowedDefects] = useState(0);
@@ -268,7 +268,7 @@ export default function Dashboard() {
       if (error) throw error;
       const { data } = supabase.storage.from('tiles').getPublicUrl(filePath);
       return {
-        id: crypto.randomUUID(), // <--- FIX: Use UUID instead of Math.random
+        id: Math.random().toString(36).substr(2, 9),
         file: file,
         src: data.publicUrl, 
         status: 'idle',
@@ -369,32 +369,24 @@ export default function Dashboard() {
     } catch (e) { toast.error("Export failed"); }
   };
 
-  // --- NEW: Load from Archive ---
   const handleLoadFromHistory = async (historyItem: any) => {
       try {
           toast.loading("Restoring inspection context...");
-
-          // 1. Create new item with a FRESH UUID
           const newItem: BatchItem = {
-              id: crypto.randomUUID(), // <--- FIX: Ensure unique key
+              id: crypto.randomUUID(), 
               file: new File([], historyItem.filename), 
               src: historyItem.imageUrl,
               status: 'done',
               results: historyItem.results,
               crops: []
           };
-
-          // Regenerate crops locally
           const newCrops = await generateCrops(historyItem.imageUrl, historyItem.results.defects);
           newItem.crops = newCrops;
-
           setBatch(prev => [newItem, ...prev]); 
           setSelectedIndex(0); 
           setActiveTab('inspection'); 
-          
           toast.dismiss();
           toast.success("History item loaded");
-
       } catch (e) {
           console.error(e);
           toast.error("Failed to load history item");
@@ -424,9 +416,27 @@ export default function Dashboard() {
           )}
 
           <div className="flex items-center gap-4">
-             <a href="https://huggingface.co/candenizkocak/tile-defect-detection-yolo11" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600 transition-colors hover:bg-slate-50 px-3 py-1.5 rounded-lg border border-transparent hover:border-slate-200">
-               <FileText className="w-4 h-4" /> Model Report <ChevronRight className="w-3 h-3" />
-             </a>
+             
+             {/* --- MOVED: USER PROFILE & LOGOUT --- */}
+             <div className="flex items-center gap-3 pl-4 border-r border-gray-200 pr-4">
+                <div className="text-right hidden sm:block">
+                    <p className="text-xs font-bold text-slate-700">{operatorName}</p>
+                    <p className="text-[10px] text-green-600 flex items-center justify-end gap-1">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Online
+                    </p>
+                </div>
+                <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs uppercase border border-blue-200">
+                    {operatorName.substring(0,2)}
+                </div>
+                <button 
+                    onClick={handleLogout}
+                    className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
+                    title="Sign Out"
+                >
+                    <LogOut className="w-4 h-4" />
+                </button>
+             </div>
+
              <button onClick={() => setIsConfigOpen(true)} className={`p-2 rounded-lg transition-colors border ${isConfigOpen ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-slate-500 hover:bg-gray-50'}`}>
                 <Settings className="w-5 h-5" />
              </button>
@@ -488,7 +498,6 @@ export default function Dashboard() {
           onUpload={handleUpload} onAnalyze={analyzeBatch} onSelect={setSelectedIndex} onRemove={removeImage}
           onOpenChart={() => setIsChartModalOpen(true)} isSimulating={isSimulating} onToggleSimulation={toggleSimulation}
           onOpenCamera={() => setIsCameraOpen(true)} onExportDataset={handleExportDataset}
-          operatorName={operatorName} onLogout={handleLogout}
         />
 
         <div className="col-span-12 lg:col-span-9 space-y-6">

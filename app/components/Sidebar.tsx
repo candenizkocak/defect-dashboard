@@ -4,9 +4,11 @@ import { useDropzone } from 'react-dropzone';
 import { 
   Upload, Loader2, ZoomIn, Layers, Trash2, CheckCircle, 
   Image as ImageIcon, Play, Square, Camera, Database, FileCode,
-  LogOut 
+  FileText, ChevronRight, BarChart3 // <--- Added BarChart3 here
 } from 'lucide-react';
 import { BatchItem } from '../types';
+import { ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
+import { DEFECT_COLORS } from '../constants';
 
 interface SidebarProps {
   batch: BatchItem[];
@@ -22,16 +24,13 @@ interface SidebarProps {
   onToggleSimulation: () => void;
   onOpenCamera: () => void;
   onExportDataset: () => void;
-  // --- NEW PROPS ---
-  operatorName: string;
-  onLogout: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  batch, selectedIndex, isProcessing,
-  onUpload, onAnalyze, onSelect, onRemove,
+  batch, selectedIndex, isProcessing, globalStats,
+  onUpload, onAnalyze, onSelect, onRemove, onOpenChart,
   isSimulating, onToggleSimulation, onOpenCamera,
-  onExportDataset, operatorName, onLogout
+  onExportDataset
 }) => {
   
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -187,26 +186,50 @@ export const Sidebar: React.FC<SidebarProps> = ({
          </div>
       </div>
 
-      {/* --- USER PROFILE FOOTER --- */}
-      <div className="mt-auto bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs uppercase border border-blue-200">
-                  {operatorName.substring(0,2)}
-              </div>
-              <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{operatorName}</span>
-                  <span className="text-[10px] text-green-600 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Online
-                  </span>
-              </div>
-          </div>
-          <button 
-            onClick={onLogout}
-            className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors border border-transparent hover:border-red-100"
-            title="Sign Out"
-          >
-              <LogOut className="w-4 h-4" />
-          </button>
+      {/* --- MINI CHART --- */}
+      {globalStats.total > 0 && (
+         <div 
+            onClick={onOpenChart}
+            className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm cursor-pointer hover:ring-2 hover:ring-blue-100 transition-all group flex-shrink-0"
+         >
+             <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <BarChart3 className="w-3.5 h-3.5" /> Batch Stats
+                </h3>
+            </div>
+            <div className="h-24 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={globalStats.data}>
+                        <Bar dataKey="value" radius={[2, 2, 0, 0]}>
+                            {globalStats.data.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={DEFECT_COLORS[entry.name] || DEFECT_COLORS['Unknown']} />
+                            ))}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+         </div>
+      )}
+
+      {/* --- MODEL REPORT LINK --- */}
+      <div className="mt-auto">
+        <a 
+           href="https://huggingface.co/candenizkocak/tile-defect-detection-yolo11" 
+           target="_blank" 
+           rel="noopener noreferrer"
+           className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm flex items-center justify-between group hover:border-blue-300 transition-all"
+        >
+            <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-50 text-slate-500 rounded-lg group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                    <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                    <p className="text-xs font-bold text-slate-700 group-hover:text-blue-700">Model Report</p>
+                    <p className="text-[10px] text-slate-400">View YOLO metrics</p>
+                </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400" />
+        </a>
       </div>
 
     </aside>
