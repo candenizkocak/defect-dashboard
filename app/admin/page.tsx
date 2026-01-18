@@ -6,18 +6,26 @@ import { useRouter } from 'next/navigation';
 import { 
     Users, UserPlus, LogOut, ShieldAlert, Trash2, Activity, 
     Sliders, Save, Database, PenTool, Archive as ArchiveIcon,
-    Filter, CheckSquare, Square, ChevronDown, ArrowUpAZ, ArrowDownAZ 
+    Filter, CheckSquare, Square, ChevronDown, ArrowUpAZ, ArrowDownAZ,
+    TrendingUp, PieChart 
 } from 'lucide-react';
+import { 
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, 
+    Tooltip as ReTooltip, ResponsiveContainer, Cell, AreaChart, Area, Line 
+} from 'recharts';
 import { toast } from 'sonner';
 import { ArchiveView } from '../components/ArchiveView';
+import { DEFECT_COLORS } from '../constants';
 
 interface User { id: string; name: string; role: string; createdAt: string; }
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'users' | 'rules' | 'audit' | 'history'>('users');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'rules' | 'audit' | 'history'>('overview');
+  
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<any>({ interventions: [], manuals: [], exports: [] });
+  const [charts, setCharts] = useState<any>({ trend: [], defects: [], operators: [] });
   
   // Settings State
   const [settings, setSettings] = useState({ confThreshold: 0.35, useRoi: true, maxAllowedDefects: 0 });
@@ -27,7 +35,7 @@ export default function AdminDashboard() {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
-  // Audit Filter & Sort State
+  // Audit Filter
   const [selectedOperators, setSelectedOperators] = useState<string[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [logSortDir, setLogSortDir] = useState<'asc' | 'desc'>('desc');
@@ -40,22 +48,21 @@ export default function AdminDashboard() {
     if (!token || role !== 'ADMIN') {
         router.push('/');
     } else {
-        // Initial data fetch
+        // Fetch data based on tab
+        if (activeTab === 'overview') fetchCharts(token);
         if (activeTab === 'users') fetchUsers(token);
         if (activeTab === 'audit') {
-            fetchUsers(token); // Need users list for the filter dropdown
+            fetchUsers(token);
             fetchAuditLogs(token);
         }
         if (activeTab === 'rules') fetchSettings();
     }
   }, [router, activeTab]);
 
-  // Re-fetch audit logs when sort direction changes
   useEffect(() => {
       if (activeTab === 'audit') fetchAuditLogs();
   }, [logSortDir]);
 
-  // Handle click outside dropdown
   useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
           if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
@@ -67,6 +74,11 @@ export default function AdminDashboard() {
   }, []);
 
   // --- API Calls ---
+
+  const fetchCharts = async (token: string) => {
+      const res = await fetch('/api/admin/charts', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setCharts(await res.json());
+  };
 
   const fetchUsers = async (token: string) => {
       const res = await fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -81,23 +93,16 @@ export default function AdminDashboard() {
   const fetchAuditLogs = async (token?: string) => {
       const t = token || localStorage.getItem('cerasight_token');
       if (!t) return;
-      
       const query = new URLSearchParams();
-      if (selectedOperators.length > 0) {
-          query.append('operators', selectedOperators.join(','));
-      }
+      if (selectedOperators.length > 0) query.append('operators', selectedOperators.join(','));
       query.append('sortDir', logSortDir);
-      
       const res = await fetch(`/api/admin/stats?${query}`, { headers: { 'Authorization': `Bearer ${t}` } });
       if (res.ok) setLogs(await res.json());
   };
 
   // --- Handlers ---
-
   const toggleOperator = (name: string) => {
-      setSelectedOperators(prev => 
-          prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
-      );
+      setSelectedOperators(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
   };
 
   const handleSaveSettings = async () => {
@@ -138,7 +143,6 @@ export default function AdminDashboard() {
       router.push('/');
   };
 
-  // Get list of operators for the dropdown
   const availableOperators = users.filter(u => u.role === 'OPERATOR');
 
   return (
@@ -158,14 +162,68 @@ export default function AdminDashboard() {
             </div>
             
             <div className="flex gap-2">
+                <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'overview' ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'}`}>Overview</button>
                 <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'users' ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'}`}>Users</button>
-                <button onClick={() => setActiveTab('rules')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'rules' ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'}`}>System Rules</button>
-                <button onClick={() => setActiveTab('history')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'history' ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'}`}>Global Archive</button>
-                <button onClick={() => setActiveTab('audit')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'audit' ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'}`}>Audit Logs</button>
+                <button onClick={() => setActiveTab('rules')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'rules' ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'}`}>Rules</button>
+                <button onClick={() => setActiveTab('history')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'history' ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'}`}>Archive</button>
+                <button onClick={() => setActiveTab('audit')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'audit' ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'}`}>Logs</button>
                 <div className="w-px h-8 bg-slate-200 mx-2"></div>
                 <button onClick={handleLogout} className="flex items-center gap-2 text-sm text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg transition-colors"><LogOut className="w-4 h-4" /> Logout</button>
             </div>
         </div>
+
+        {/* --- OVERVIEW TAB --- */}
+        {activeTab === 'overview' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                
+                {/* 1. Production Trend */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 col-span-1 lg:col-span-2">
+                    <h3 className="text-base font-bold text-slate-700 mb-6 flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5 text-purple-600" /> 7-Day Production Volume & Yield Rate
+                    </h3>
+                    <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={charts.trend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#8884d8" stopOpacity={0.1}/>
+                                        <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
+                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                                <ReTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                <CartesianGrid vertical={false} stroke="#e2e8f0" strokeDasharray="3 3" />
+                                <Area type="monotone" dataKey="total" stroke="#8884d8" fillOpacity={1} fill="url(#colorTotal)" name="Total Tiles" />
+                                <Line type="monotone" dataKey="yieldRate" stroke="#16a34a" strokeWidth={2} name="Yield %" dot={{r: 4}} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* 2. Defect Pareto (Expanded to full width) */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 col-span-1 lg:col-span-2">
+                    <h3 className="text-base font-bold text-slate-700 mb-6 flex items-center gap-2">
+                        <PieChart className="w-5 h-5 text-blue-600" /> Top Defect Types
+                    </h3>
+                    <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={charts.defects} layout="vertical" margin={{ left: 20 }}>
+                                <XAxis type="number" hide />
+                                <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11}} axisLine={false} tickLine={false} />
+                                <ReTooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '8px' }} />
+                                <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={24}>
+                                    {charts.defects.map((entry: any, index: number) => (
+                                        <Cell key={`cell-${index}`} fill={DEFECT_COLORS[entry.name] || '#94a3b8'} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+            </div>
+        )}
 
         {/* --- USERS TAB --- */}
         {activeTab === 'users' && (
