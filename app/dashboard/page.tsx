@@ -3,9 +3,9 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  Settings, FileText, ChevronRight, ChevronLeft, AlertTriangle, 
-  Download, X, Eye, LayoutDashboard, ScanLine, 
-  Radio, Archive as ArchiveIcon, LogOut
+  Settings, ChevronRight, ChevronLeft, AlertTriangle, 
+  X, Eye, LayoutDashboard, ScanLine, 
+  Archive as ArchiveIcon, LogOut
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
@@ -14,9 +14,9 @@ import {
 import { toast } from 'sonner';
 
 // Internal Imports
-import { API_URL, DEFECT_COLORS } from '../constants';
+import { DEFECT_COLORS } from '../constants';
 import { BatchItem } from '../types';
-import { generateCrops, downloadBatchCSV } from '../utils/processing';
+import { generateCrops } from '../utils/processing';
 import { exportYOLODataset } from '../utils/exportDataset';
 import { supabase } from '@/app/lib/supabase';
 
@@ -27,7 +27,6 @@ import { ConfigDrawer } from '../components/ConfigDrawer';
 import { AnalyticsView } from '../components/AnalyticsView';
 import { ArchiveView } from '../components/ArchiveView';
 import { ContextMenu } from '../components/ContextMenu';
-import { WebcamModal } from '../components/WebcamModal';
 import { ClassSelector } from '../components/ClassSelector';
 
 export default function Dashboard() {
@@ -52,7 +51,6 @@ export default function Dashboard() {
         fetch('/api/admin/settings')
             .then(res => res.json())
             .then(data => {
-                // Check if properties exist specifically to avoid falsy zero checks
                 if (data.confThreshold !== undefined) setConfThreshold(data.confThreshold);
                 if (data.useRoi !== undefined) setUseRoi(data.useRoi);
                 if (data.maxAllowedDefects !== undefined) setMaxAllowedDefects(data.maxAllowedDefects);
@@ -69,10 +67,6 @@ export default function Dashboard() {
   
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; defectIndex: number } | null>(null);
   const [newDefectCandidate, setNewDefectCandidate] = useState<{ box: [number, number, number, number], x: number, y: number } | null>(null);
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
-
-  const [isSimulating, setIsSimulating] = useState(false);
-  const simulationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -110,7 +104,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (batch.length === 0 || activeTab !== 'inspection' || isSimulating || isCameraOpen || newDefectCandidate) return;
+      if (batch.length === 0 || activeTab !== 'inspection' || newDefectCandidate) return;
       if (e.key === 'ArrowRight') {
         setSelectedIndex(prev => Math.min(prev + 1, batch.length - 1));
       } else if (e.key === 'ArrowLeft') {
@@ -119,37 +113,7 @@ export default function Dashboard() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [batch.length, activeTab, isSimulating, isCameraOpen, newDefectCandidate]);
-
-  useEffect(() => {
-    if (!isSimulating) {
-      if (simulationTimerRef.current) clearTimeout(simulationTimerRef.current);
-      return;
-    }
-    const runSimulationStep = async () => {
-        if (selectedIndex < 0 || selectedIndex >= batch.length) {
-            setIsSimulating(false);
-            toast.success("Slideshow complete");
-            return;
-        }
-        const current = batch[selectedIndex];
-        if (current.status === 'idle') {
-            await analyzeSingleImage(selectedIndex);
-        }
-        simulationTimerRef.current = setTimeout(() => {
-            if (selectedIndex < batch.length - 1) {
-                setSelectedIndex(prev => prev + 1);
-            } else {
-                setIsSimulating(false);
-                toast.success("Slideshow complete");
-            }
-        }, 2000); 
-    };
-    runSimulationStep();
-    return () => {
-        if (simulationTimerRef.current) clearTimeout(simulationTimerRef.current);
-    };
-  }, [isSimulating, selectedIndex, batch]);
+  }, [batch.length, activeTab, newDefectCandidate]);
 
   // --- Stats ---
   const globalStats = useMemo(() => {
@@ -198,7 +162,6 @@ export default function Dashboard() {
 
   const handleContextMenu = (e: React.MouseEvent, index: number) => {
       e.preventDefault();
-      if(isSimulating) { toast.warning("Pause slideshow to edit."); return; }
       setContextMenu({ x: e.clientX, y: e.clientY, defectIndex: index });
   };
 
@@ -287,11 +250,8 @@ export default function Dashboard() {
     });
   }, [selectedIndex]);
 
-  const handleCameraCapture = (file: File) => { handleUpload([file]); };
-
   const removeImage = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isSimulating) return;
     const newBatch = [...batch];
     newBatch.splice(index, 1);
     setBatch(newBatch);
@@ -349,14 +309,6 @@ export default function Dashboard() {
     toast.success("Batch complete");
   };
 
-  const toggleSimulation = () => {
-      if (isSimulating) { setIsSimulating(false); toast.info("Slideshow paused"); } 
-      else { 
-          if (selectedIndex === batch.length - 1 && batch[selectedIndex].status === 'done') setSelectedIndex(0);
-          setIsSimulating(true); setActiveTab('inspection'); toast.info("Slideshow started"); 
-      }
-  };
-
   const handleExportDataset = async () => {
     try {
         await exportYOLODataset(batch);
@@ -404,13 +356,6 @@ export default function Dashboard() {
              </h1>
           </div>
           
-          {isSimulating && (
-              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-red-50 text-red-600 rounded-full border border-red-100 animate-pulse">
-                  <Radio className="w-4 h-4" />
-                  <span className="text-xs font-bold tracking-wider">SLIDESHOW ACTIVE</span>
-              </div>
-          )}
-
           <div className="flex items-center gap-4">
              
              <div className="flex items-center gap-3 pl-4 border-r border-gray-200 pr-4">
@@ -441,7 +386,6 @@ export default function Dashboard() {
 
       {/* OVERLAYS */}
       {contextMenu && ( <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} onDelete={handleDeleteDefect} /> )}
-      {isCameraOpen && ( <WebcamModal onClose={() => setIsCameraOpen(false)} onCapture={handleCameraCapture} /> )}
       {newDefectCandidate && ( <ClassSelector x={newDefectCandidate.x} y={newDefectCandidate.y} onSelect={handleAddDefect} onCancel={() => setNewDefectCandidate(null)} /> )}
 
       <ConfigDrawer 
@@ -490,8 +434,8 @@ export default function Dashboard() {
         <Sidebar 
           batch={batch} selectedIndex={selectedIndex} isProcessing={isProcessing} globalStats={globalStats}
           onUpload={handleUpload} onAnalyze={analyzeBatch} onSelect={setSelectedIndex} onRemove={removeImage}
-          onOpenChart={() => setIsChartModalOpen(true)} isSimulating={isSimulating} onToggleSimulation={toggleSimulation}
-          onOpenCamera={() => setIsCameraOpen(true)} onExportDataset={handleExportDataset}
+          onOpenChart={() => setIsChartModalOpen(true)}
+          onExportDataset={handleExportDataset}
         />
 
         <div className="col-span-12 lg:col-span-9 space-y-6">
@@ -549,9 +493,9 @@ export default function Dashboard() {
                     <div className="flex items-center gap-3">
                         <span className="hidden sm:inline text-xs text-slate-400 mr-2">Use <kbd className="font-mono bg-gray-100 px-1 rounded">←</kbd> <kbd className="font-mono bg-gray-100 px-1 rounded">→</kbd> keys</span>
                         <div className="flex items-center bg-gray-100 rounded-lg p-1">
-                        <button disabled={selectedIndex <= 0 || isSimulating} onClick={() => setSelectedIndex(i => i - 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronLeft className="w-5 h-5" /></button>
+                        <button disabled={selectedIndex <= 0} onClick={() => setSelectedIndex(i => i - 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronLeft className="w-5 h-5" /></button>
                         <span className="text-xs font-mono text-slate-500 w-16 text-center font-medium">{batch.length > 0 ? `${selectedIndex + 1} / ${batch.length}` : "- / -"}</span>
-                        <button disabled={selectedIndex >= batch.length - 1 || isSimulating} onClick={() => setSelectedIndex(i => i + 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronRight className="w-5 h-5" /></button>
+                        <button disabled={selectedIndex >= batch.length - 1} onClick={() => setSelectedIndex(i => i + 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronRight className="w-5 h-5" /></button>
                         </div>
                     </div>
                 </div>
@@ -562,7 +506,6 @@ export default function Dashboard() {
                     highlightedIndex={highlightedDefect}
                     onDefectContextMenu={handleContextMenu}
                     onDrawComplete={handleDrawComplete}
-                    maxAllowedDefects={maxAllowedDefects}
                 />
 
                 {/* Details Panel */}
