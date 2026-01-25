@@ -7,7 +7,7 @@ import {
     Users, UserPlus, LogOut, ShieldAlert, Trash2, Activity, 
     Sliders, Save, Database, PenTool, Archive as ArchiveIcon,
     Filter, CheckSquare, Square, ChevronDown, ArrowUpAZ, ArrowDownAZ,
-    TrendingUp, PieChart, RotateCcw, Lock
+    TrendingUp, PieChart, RotateCcw, Lock, KeyRound
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, 
@@ -17,10 +17,12 @@ import { toast } from 'sonner';
 import { ArchiveView } from '../components/ArchiveView';
 import { DEFECT_COLORS } from '../constants';
 
-// Updated Interface to include isActive
+// Updated Interface
 interface User { 
     id: string; 
-    name: string; 
+    name: string;      // Username
+    firstName?: string;
+    lastName?: string;
     role: string; 
     isActive: boolean; 
     createdAt: string; 
@@ -38,8 +40,10 @@ export default function AdminDashboard() {
   const [settings, setSettings] = useState({ confThreshold: 0.35, useRoi: true, maxAllowedDefects: 0 });
   const [saving, setSaving] = useState(false);
 
-  // User Form
+  // User Form State
   const [newUsername, setNewUsername] = useState("");
+  const [newFirstName, setNewFirstName] = useState(""); // New
+  const [newLastName, setNewLastName] = useState("");   // New
   const [newPassword, setNewPassword] = useState("");
 
   // Audit Filter
@@ -55,7 +59,6 @@ export default function AdminDashboard() {
     if (!token || role !== 'ADMIN') {
         router.push('/');
     } else {
-        // Fetch data based on tab
         if (activeTab === 'overview') fetchCharts(token);
         if (activeTab === 'users') fetchUsers(token);
         if (activeTab === 'audit') {
@@ -126,19 +129,39 @@ export default function AdminDashboard() {
       setSaving(false);
   };
 
+  // 1. CREATE USER (Updated with Names)
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
       const token = localStorage.getItem('cerasight_token');
-      await fetch('/api/admin/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ username: newUsername, password: newPassword, role: 'OPERATOR' })
-      });
-      toast.success("Operator Created");
-      setNewUsername(""); setNewPassword(""); fetchUsers(token!);
+      
+      try {
+          const res = await fetch('/api/admin/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ 
+                username: newUsername, 
+                firstName: newFirstName,
+                lastName: newLastName,
+                password: newPassword, 
+                role: 'OPERATOR' 
+            })
+          });
+
+          if(res.ok) {
+              toast.success("Operator Created");
+              setNewUsername(""); 
+              setNewPassword(""); 
+              setNewFirstName(""); 
+              setNewLastName("");
+              fetchUsers(token!);
+          } else {
+              const err = await res.json();
+              toast.error(err.error || "Creation failed");
+          }
+      } catch(e) { toast.error("Creation failed"); }
   };
 
-  // NEW: Deactivate User (Soft Delete)
+  // 2. SOFT DELETE USER
   const handleDeleteUser = async (id: string) => {
       if(!confirm("Deactivate this operator? They will no longer be able to login.")) return;
       const token = localStorage.getItem('cerasight_token');
@@ -156,7 +179,7 @@ export default function AdminDashboard() {
       }
   };
 
-  // NEW: Reactivate User
+  // 3. RESTORE USER
   const handleRestoreUser = async (id: string) => {
       if(!confirm("Reactivate this operator?")) return;
       const token = localStorage.getItem('cerasight_token');
@@ -173,6 +196,46 @@ export default function AdminDashboard() {
       } else {
           toast.error("Failed to reactivate");
       }
+  };
+
+  // 4. RESET PASSWORD (Email)
+  const handleResetPassword = async (user: User) => {
+      if(!confirm(`Reset password for ${user.firstName || user.name}? They will receive an email.`)) return;
+      
+      let emailInput = null;
+      const token = localStorage.getItem('cerasight_token');
+      
+      try {
+          // Attempt 1: Try without providing email (assumes User already has one in DB)
+          const res = await fetch('/api/admin/users/reset', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ userId: user.id })
+          });
+          
+          const data = await res.json();
+          
+          // If backend says "User has no email", prompt Admin to provide one
+          if (!res.ok && data.error && data.error.includes("provide one")) {
+              emailInput = prompt(`This user has no email saved.\nPlease enter an email address for ${user.name}:`);
+              if (!emailInput) return; // Cancelled
+              
+              // Attempt 2: Retry with email
+              const res2 = await fetch('/api/admin/users/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ userId: user.id, email: emailInput })
+              });
+              
+              if(res2.ok) toast.success("Password reset & email sent");
+              else toast.error("Failed to reset");
+
+          } else if (res.ok) {
+              toast.success("Password reset & email sent");
+          } else {
+              toast.error(data.error);
+          }
+      } catch(e) { toast.error("Reset request failed"); }
   };
 
   const handleLogout = () => {
@@ -238,7 +301,7 @@ export default function AdminDashboard() {
                     </div>
                 </div>
 
-                {/* 2. Defect Pareto (Expanded to full width) */}
+                {/* 2. Defect Pareto */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 col-span-1 lg:col-span-2">
                     <h3 className="text-base font-bold text-slate-700 mb-6 flex items-center gap-2">
                         <PieChart className="w-5 h-5 text-blue-600" /> Top Defect Types
@@ -264,72 +327,105 @@ export default function AdminDashboard() {
 
         {/* --- USERS TAB --- */}
         {activeTab === 'users' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {/* Create Form */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-fit">
                     <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-4 flex items-center gap-2">
                         <UserPlus className="w-4 h-4" /> Add Operator
                     </h2>
                     <form onSubmit={handleCreateUser} className="space-y-4">
-                        <input type="text" required value={newUsername} onChange={e => setNewUsername(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Username" />
-                        <input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Password" />
-                        <button type="submit" className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold">Create User</button>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500">First Name</label>
+                                <input type="text" required value={newFirstName} onChange={e => setNewFirstName(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-200 outline-none" placeholder="John" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-slate-500">Last Name</label>
+                                <input type="text" required value={newLastName} onChange={e => setNewLastName(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-200 outline-none" placeholder="Doe" />
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-slate-500">Username (Login ID)</label>
+                            <input type="text" required value={newUsername} onChange={e => setNewUsername(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-200 outline-none" placeholder="jdoe" />
+                        </div>
+                        
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-slate-500">Initial Password</label>
+                            <input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-200 outline-none" placeholder="••••" />
+                        </div>
+
+                        <button type="submit" className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold shadow-md shadow-purple-200 transition-all">Create Operator</button>
                     </form>
                 </div>
                 
+                {/* Users List */}
                 <div className="col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-4 flex items-center gap-2"><Users className="w-4 h-4" /> Active Users</h2>
+                    <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-4 flex items-center gap-2"><Users className="w-4 h-4" /> Team Roster</h2>
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 text-slate-500">
+                        <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
                             <tr>
-                                <th className="px-4 py-3">Name</th>
-                                <th className="px-4 py-3">Role</th>
-                                <th className="px-4 py-3">Status</th>
-                                <th className="px-4 py-3 text-right">Actions</th>
+                                <th className="px-4 py-3 font-semibold">Full Name</th>
+                                <th className="px-4 py-3 font-semibold">Username</th>
+                                <th className="px-4 py-3 font-semibold">Role</th>
+                                <th className="px-4 py-3 font-semibold">Status</th>
+                                <th className="px-4 py-3 text-right font-semibold">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {users.map(u => (
-                                <tr key={u.id} className={!u.isActive ? "bg-slate-50/50" : ""}>
-                                    <td className={`px-4 py-3 font-medium ${!u.isActive ? "text-slate-400 italic" : "text-slate-900"}`}>
-                                        {u.name}
+                                <tr key={u.id} className={!u.isActive ? "bg-slate-50/50" : "hover:bg-slate-50"}>
+                                    <td className={`px-4 py-3 font-bold ${!u.isActive ? "text-slate-400" : "text-slate-800"}`}>
+                                        {u.firstName || u.lastName ? `${u.firstName} ${u.lastName}` : u.name}
+                                    </td>
+                                    <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                                        @{u.name}
                                     </td>
                                     <td className="px-4 py-3">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
                                             {u.role}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
                                         {u.isActive ? (
-                                            <span className="flex items-center gap-1.5 text-xs text-green-600 font-bold">
+                                            <span className="flex items-center gap-1.5 text-xs text-green-600 font-bold bg-green-50 px-2 py-1 rounded-full w-fit">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Active
                                             </span>
                                         ) : (
-                                            <span className="flex items-center gap-1.5 text-xs text-slate-400 font-bold">
+                                            <span className="flex items-center gap-1.5 text-xs text-slate-500 font-bold bg-slate-100 px-2 py-1 rounded-full w-fit">
                                                 <Lock className="w-3 h-3" /> Inactive
                                             </span>
                                         )}
                                     </td>
                                     <td className="px-4 py-3 text-right">
                                         {u.role !== 'ADMIN' && (
-                                            <>
+                                            <div className="flex justify-end gap-2">
+                                                 <button 
+                                                    onClick={() => handleResetPassword(u)}
+                                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-all"
+                                                    title="Reset Password via Email"
+                                                >
+                                                    <KeyRound className="w-4 h-4"/>
+                                                </button>
+
                                                 {u.isActive ? (
                                                     <button 
                                                         onClick={() => handleDeleteUser(u.id)} 
-                                                        className="text-slate-400 hover:text-red-600 transition-colors p-1"
-                                                        title="Deactivate User"
+                                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                                                        title="Deactivate Account"
                                                     >
                                                         <Trash2 className="w-4 h-4"/>
                                                     </button>
                                                 ) : (
                                                     <button 
                                                         onClick={() => handleRestoreUser(u.id)} 
-                                                        className="text-slate-400 hover:text-green-600 transition-colors p-1"
-                                                        title="Reactivate User"
+                                                        className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-all"
+                                                        title="Reactivate Account"
                                                     >
                                                         <RotateCcw className="w-4 h-4"/>
                                                     </button>
                                                 )}
-                                            </>
+                                            </div>
                                         )}
                                     </td>
                                 </tr>

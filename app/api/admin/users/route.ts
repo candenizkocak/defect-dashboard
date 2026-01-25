@@ -26,11 +26,17 @@ export async function GET() {
     if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const users = await db.operator.findMany({
-        // Include isActive in selection
-        select: { id: true, name: true, role: true, isActive: true, createdAt: true },
+        select: { 
+            id: true, 
+            name: true,       // Username
+            firstName: true,  // New
+            lastName: true,   // New
+            role: true, 
+            isActive: true, 
+            createdAt: true 
+        },
         orderBy: { createdAt: 'desc' }
     });
-
     return NextResponse.json(users);
 }
 
@@ -40,26 +46,27 @@ export async function POST(req: Request) {
     if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     try {
-        const { username, password, role } = await req.json();
+        const { username, firstName, lastName, password, role } = await req.json();
 
         if (!username || !password) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
 
         const existing = await db.operator.findUnique({ where: { name: username } });
-        if (existing) return NextResponse.json({ error: "User already exists" }, { status: 400 });
+        if (existing) return NextResponse.json({ error: "Username already exists" }, { status: 400 });
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const newUser = await db.operator.create({
             data: {
-                name: username,
+                name: username, // Login ID
+                firstName: firstName || "",
+                lastName: lastName || "",
                 password: hashedPassword,
                 role: role || 'OPERATOR',
-                isActive: true // Default to true
+                isActive: true
             }
         });
 
         return NextResponse.json(newUser);
-
     } catch (e) {
         return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
     }

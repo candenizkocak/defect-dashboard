@@ -11,13 +11,17 @@ datasource db {
 // --- GROUP 1: IDENTITY & SESSION ---
 
 model Operator {
-  id        String    @id @default(uuid())
-  name      String    @unique
-  password  String
-  role      String    @default("OPERATOR")
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  sessions  Session[]
+  id                 String    @id @default(uuid())
+  name               String    @unique // This acts as the USERNAME
+  firstName          String?   // <--- NEW
+  lastName           String?   // <--- NEW
+  email              String?   
+  password           String
+  role               String    @default("OPERATOR")
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  sessions           Session[]
 }
 
 model Session {
