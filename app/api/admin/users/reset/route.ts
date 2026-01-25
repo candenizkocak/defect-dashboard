@@ -15,10 +15,14 @@ export async function POST(req: Request) {
         if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const session = await db.session.findUnique({ where: { id: token }, include: { operator: true } });
-        if (session?.operator.role !== 'ADMIN') return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        
+        // Security Check: Role + Valid Session
+        if (!session || !session.isValid || session.operator.role !== 'ADMIN') {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
 
         // 2. Get Input
-        const { userId, email } = await req.json(); // Admin can provide email if user doesn't have one
+        const { userId, email } = await req.json(); 
         if (!userId) return NextResponse.json({ error: "Missing User ID" }, { status: 400 });
 
         // 3. Find User
@@ -26,7 +30,6 @@ export async function POST(req: Request) {
         if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
         // 4. Handle Email Address
-        // If user has no email in DB, admin MUST provide one now.
         const targetEmail = email || user.email;
         if (!targetEmail) {
             return NextResponse.json({ error: "User has no email. Please provide one." }, { status: 400 });
@@ -36,19 +39,23 @@ export async function POST(req: Request) {
         const tempPass = generateTempPassword();
         const hashedPassword = await bcrypt.hash(tempPass, 10);
 
-        // 6. Update Database
+        // 6. Update User Record
         await db.operator.update({
             where: { id: userId },
             data: {
                 password: hashedPassword,
                 mustChangePassword: true,
-                email: targetEmail, // Save the email if provided
+                email: targetEmail, 
                 isActive: true // Re-activate if they were inactive
             }
         });
 
-        // 7. Revoke existing sessions (Security Best Practice)
-        await db.session.deleteMany({ where: { operatorId: userId } });
+        // 7. Revoke existing sessions (CRITICAL FIX)
+        // We use updateMany instead of deleteMany to prevent foreign key errors
+        await db.session.updateMany({ 
+            where: { operatorId: userId },
+            data: { isValid: false } 
+        });
 
         // 8. Send Email
         await sendPasswordResetEmail(targetEmail, tempPass);
@@ -56,7 +63,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true });
 
     } catch (e) {
-        console.error(e);
-        return NextResponse.json({ error: "Reset failed" }, { status: 500 });
+        console.error("Reset Error:", e);
+        return NextResponse.json({ error: "Reset failed. Check server logs." }, { status: 500 });
     }
 }

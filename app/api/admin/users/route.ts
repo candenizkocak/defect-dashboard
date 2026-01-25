@@ -16,7 +16,9 @@ async function verifyAdmin() {
         include: { operator: true }
     });
 
-    if (!session || session.operator.role !== 'ADMIN') return null;
+    // UPDATED CHECK: Must be valid session AND Admin
+    if (!session || !session.isValid || session.operator.role !== 'ADMIN') return null;
+    
     return session.operator;
 }
 
@@ -28,15 +30,17 @@ export async function GET() {
     const users = await db.operator.findMany({
         select: { 
             id: true, 
-            name: true,       // Username
-            firstName: true,  // New
-            lastName: true,   // New
+            name: true, 
+            firstName: true,
+            lastName: true,
+            email: true,
             role: true, 
             isActive: true, 
             createdAt: true 
         },
         orderBy: { createdAt: 'desc' }
     });
+
     return NextResponse.json(users);
 }
 
@@ -46,13 +50,16 @@ export async function POST(req: Request) {
     if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     try {
-        // 1. Destructure email from the request body
         const { username, firstName, lastName, email, password, role } = await req.json();
 
-        if (!username || !password) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+        if (!username || !password) {
+            return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+        }
 
         const existing = await db.operator.findUnique({ where: { name: username } });
-        if (existing) return NextResponse.json({ error: "Username already exists" }, { status: 400 });
+        if (existing) {
+            return NextResponse.json({ error: "User already exists" }, { status: 400 });
+        }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -61,7 +68,7 @@ export async function POST(req: Request) {
                 name: username,
                 firstName: firstName || "",
                 lastName: lastName || "",
-                email: email || null, // <--- 2. Save the email
+                email: email || null,
                 password: hashedPassword,
                 role: role || 'OPERATOR',
                 isActive: true
@@ -69,6 +76,7 @@ export async function POST(req: Request) {
         });
 
         return NextResponse.json(newUser);
+
     } catch (e) {
         return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
     }
@@ -84,21 +92,27 @@ export async function DELETE(req: Request) {
         const id = searchParams.get('id');
 
         if (!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
+        
         if (id === admin.id) return NextResponse.json({ error: "Cannot deactivate yourself" }, { status: 400 });
 
-        // Fetch current name to append suffix
         const current = await db.operator.findUnique({ where: { id } });
         if (!current) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-        // Prevent double deactivation
         if (!current.isActive) return NextResponse.json({ success: true });
 
+        // Deactivate User
         await db.operator.update({ 
             where: { id },
             data: { 
                 isActive: false,
                 name: `${current.name} (Inactive)` 
             }
+        });
+
+        // Invalidate Sessions
+        await db.session.updateMany({
+            where: { operatorId: id },
+            data: { isValid: false }
         });
 
         return NextResponse.json({ success: true });
@@ -120,7 +134,6 @@ export async function PATCH(req: Request) {
         const current = await db.operator.findUnique({ where: { id } });
         if (!current) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-        // Restore Name (Remove " (Inactive)")
         const restoredName = current.name.replace(" (Inactive)", "");
 
         await db.operator.update({

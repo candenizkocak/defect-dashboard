@@ -7,7 +7,7 @@ import { headers } from 'next/headers';
 const PYTHON_API_URL = "https://candenizkocak--tile-defect-api-json-model-analyze.modal.run";
 
 export async function POST(req: Request) {
-  const startTimer = performance.now(); // <--- 1. START TIMER
+  const startTimer = performance.now(); 
 
   try {
     const headersList = await headers();
@@ -17,23 +17,23 @@ export async function POST(req: Request) {
     // <--- 2. AUTHENTICATION (Security Check)
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     
-    // Validate Session exists in DB
+    // Validate Session exists AND IS VALID (Fix)
     const session = await db.session.findUnique({ where: { id: token } });
-    if (!session) return NextResponse.json({ error: "Invalid Session" }, { status: 403 });
+    
+    if (!session || !session.isValid) {
+        return NextResponse.json({ error: "Session Expired" }, { status: 403 });
+    }
 
     const body = await req.json();
     const { image, imageUrl, conf_threshold, use_roi, filename, maxAllowedDefects, clientBatchId } = body;
 
-    // <--- 3. BATCHING (Logic Fix)
-    // We use the ID sent from Frontend (created when user clicked Upload)
-    // This groups files from the *same upload action* together.
+    // <--- 3. BATCHING
     let batch = await db.batch.findUnique({ where: { id: clientBatchId } });
     
     if (!batch) {
-        // Create new batch if it's the first image of the group
         batch = await db.batch.create({
             data: {
-                id: clientBatchId, // Use the UUID from client
+                id: clientBatchId, 
                 sessionId: session.id,
                 name: `Upload set ${new Date().toLocaleTimeString()}`
             }
@@ -58,7 +58,6 @@ export async function POST(req: Request) {
                     filename: filename,
                     sizeBytes: Math.floor(image.length * 0.75),
                     mimeType: "image/png",
-                    // Width/Height updated later
                 }
             }
         }
@@ -74,8 +73,7 @@ export async function POST(req: Request) {
     if (!aiResponse.ok) throw new Error("AI Model Failed");
     const aiData = await aiResponse.json();
 
-    // <--- 4. DIMENSIONS (Data Integrity)
-    // Update metadata with REAL dimensions from the AI model
+    // <--- 4. DIMENSIONS
     if (aiData.width && aiData.height) {
         await db.imageMetadata.update({
             where: { imageId: sourceImage.id },
@@ -96,7 +94,7 @@ export async function POST(req: Request) {
     let qualityRule = await db.qualityRule.findFirst({ where: { maxAllowedDefects } });
     if (!qualityRule) qualityRule = await db.qualityRule.create({ data: { maxAllowedDefects } });
 
-    // <--- 5. TIMING (Performance Metrics)
+    // <--- 5. TIMING
     const endTimer = performance.now();
     const duration = Math.round(endTimer - startTimer);
 
@@ -107,7 +105,6 @@ export async function POST(req: Request) {
             configId: analysisConfig.id,
             qualityRuleId: qualityRule.id,
             status: { create: { status: "SUCCESS" } },
-            // REAL METRICS saved here:
             timing: { create: { startedAt: new Date(), completedAt: new Date(), durationMs: duration } }
         }
     });

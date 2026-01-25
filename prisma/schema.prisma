@@ -29,6 +29,7 @@ model Session {
   operatorId String
   operator   Operator     @relation(fields: [operatorId], references: [id])
   startedAt  DateTime     @default(now())
+  isValid    Boolean      @default(true)
   clientInfo ClientInfo?
   batches    Batch[]
   actions    UserIntervention[]
