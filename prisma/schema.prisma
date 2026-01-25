@@ -12,9 +12,10 @@ datasource db {
 
 model Operator {
   id        String    @id @default(uuid())
-  name      String    @unique // Username
-  password  String    // <--- NEW: Hashed Password
-  role      String    @default("OPERATOR") // ADMIN or OPERATOR
+  name      String    @unique
+  password  String
+  role      String    @default("OPERATOR")
+  isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   sessions  Session[]
 }

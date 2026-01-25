@@ -17,7 +17,6 @@ async function verifyAdmin() {
     });
 
     if (!session || session.operator.role !== 'ADMIN') return null;
-    
     return session.operator;
 }
 
@@ -27,7 +26,8 @@ export async function GET() {
     if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const users = await db.operator.findMany({
-        select: { id: true, name: true, role: true, createdAt: true },
+        // Include isActive in selection
+        select: { id: true, name: true, role: true, isActive: true, createdAt: true },
         orderBy: { createdAt: 'desc' }
     });
 
@@ -42,14 +42,10 @@ export async function POST(req: Request) {
     try {
         const { username, password, role } = await req.json();
 
-        if (!username || !password) {
-            return NextResponse.json({ error: "Missing fields" }, { status: 400 });
-        }
+        if (!username || !password) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
 
         const existing = await db.operator.findUnique({ where: { name: username } });
-        if (existing) {
-            return NextResponse.json({ error: "User already exists" }, { status: 400 });
-        }
+        if (existing) return NextResponse.json({ error: "User already exists" }, { status: 400 });
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -57,7 +53,8 @@ export async function POST(req: Request) {
             data: {
                 name: username,
                 password: hashedPassword,
-                role: role || 'OPERATOR'
+                role: role || 'OPERATOR',
+                isActive: true // Default to true
             }
         });
 
@@ -68,7 +65,7 @@ export async function POST(req: Request) {
     }
 }
 
-// DELETE: Remove user
+// DELETE: Soft Delete (Deactivate)
 export async function DELETE(req: Request) {
     const admin = await verifyAdmin();
     if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -78,14 +75,56 @@ export async function DELETE(req: Request) {
         const id = searchParams.get('id');
 
         if (!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
-        
-        // Prevent suicide (Deleting self)
-        if (id === admin.id) return NextResponse.json({ error: "Cannot delete yourself" }, { status: 400 });
+        if (id === admin.id) return NextResponse.json({ error: "Cannot deactivate yourself" }, { status: 400 });
 
-        await db.operator.delete({ where: { id } });
+        // Fetch current name to append suffix
+        const current = await db.operator.findUnique({ where: { id } });
+        if (!current) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+        // Prevent double deactivation
+        if (!current.isActive) return NextResponse.json({ success: true });
+
+        await db.operator.update({ 
+            where: { id },
+            data: { 
+                isActive: false,
+                name: `${current.name} (Inactive)` 
+            }
+        });
 
         return NextResponse.json({ success: true });
     } catch (e) {
-        return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+        return NextResponse.json({ error: "Deactivation failed" }, { status: 500 });
+    }
+}
+
+// PATCH: Reactivate User
+export async function PATCH(req: Request) {
+    const admin = await verifyAdmin();
+    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    try {
+        const { id } = await req.json();
+
+        if (!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
+
+        const current = await db.operator.findUnique({ where: { id } });
+        if (!current) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+        // Restore Name (Remove " (Inactive)")
+        const restoredName = current.name.replace(" (Inactive)", "");
+
+        await db.operator.update({
+            where: { id },
+            data: {
+                isActive: true,
+                name: restoredName
+            }
+        });
+
+        return NextResponse.json({ success: true });
+
+    } catch (e) {
+        return NextResponse.json({ error: "Reactivation failed" }, { status: 500 });
     }
 }

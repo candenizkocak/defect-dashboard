@@ -7,7 +7,7 @@ import {
     Users, UserPlus, LogOut, ShieldAlert, Trash2, Activity, 
     Sliders, Save, Database, PenTool, Archive as ArchiveIcon,
     Filter, CheckSquare, Square, ChevronDown, ArrowUpAZ, ArrowDownAZ,
-    TrendingUp, PieChart 
+    TrendingUp, PieChart, RotateCcw, Lock
 } from 'lucide-react';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, 
@@ -17,7 +17,14 @@ import { toast } from 'sonner';
 import { ArchiveView } from '../components/ArchiveView';
 import { DEFECT_COLORS } from '../constants';
 
-interface User { id: string; name: string; role: string; createdAt: string; }
+// Updated Interface to include isActive
+interface User { 
+    id: string; 
+    name: string; 
+    role: string; 
+    isActive: boolean; 
+    createdAt: string; 
+}
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -131,11 +138,41 @@ export default function AdminDashboard() {
       setNewUsername(""); setNewPassword(""); fetchUsers(token!);
   };
 
+  // NEW: Deactivate User (Soft Delete)
   const handleDeleteUser = async (id: string) => {
-      if(!confirm("Are you sure?")) return;
+      if(!confirm("Deactivate this operator? They will no longer be able to login.")) return;
       const token = localStorage.getItem('cerasight_token');
-      await fetch(`/api/admin/users?id=${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-      fetchUsers(token!);
+      
+      const res = await fetch(`/api/admin/users?id=${id}`, { 
+          method: 'DELETE', 
+          headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      
+      if (res.ok) {
+          toast.success("User deactivated");
+          fetchUsers(token!);
+      } else {
+          toast.error("Failed to deactivate");
+      }
+  };
+
+  // NEW: Reactivate User
+  const handleRestoreUser = async (id: string) => {
+      if(!confirm("Reactivate this operator?")) return;
+      const token = localStorage.getItem('cerasight_token');
+      
+      const res = await fetch('/api/admin/users', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ id })
+      });
+
+      if (res.ok) {
+          toast.success("User reactivated");
+          fetchUsers(token!);
+      } else {
+          toast.error("Failed to reactivate");
+      }
   };
 
   const handleLogout = () => {
@@ -238,16 +275,63 @@ export default function AdminDashboard() {
                         <button type="submit" className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold">Create User</button>
                     </form>
                 </div>
+                
                 <div className="col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-4 flex items-center gap-2"><Users className="w-4 h-4" /> Active Users</h2>
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 text-slate-500"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Role</th><th className="px-4 py-3 text-right">Actions</th></tr></thead>
+                        <thead className="bg-slate-50 text-slate-500">
+                            <tr>
+                                <th className="px-4 py-3">Name</th>
+                                <th className="px-4 py-3">Role</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
                         <tbody className="divide-y divide-slate-100">
                             {users.map(u => (
-                                <tr key={u.id}>
-                                    <td className="px-4 py-3 font-medium">{u.name}</td>
-                                    <td className="px-4 py-3"><span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">{u.role}</span></td>
-                                    <td className="px-4 py-3 text-right">{u.role !== 'ADMIN' && <button onClick={() => handleDeleteUser(u.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>}</td>
+                                <tr key={u.id} className={!u.isActive ? "bg-slate-50/50" : ""}>
+                                    <td className={`px-4 py-3 font-medium ${!u.isActive ? "text-slate-400 italic" : "text-slate-900"}`}>
+                                        {u.name}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                            {u.role}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        {u.isActive ? (
+                                            <span className="flex items-center gap-1.5 text-xs text-green-600 font-bold">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Active
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-1.5 text-xs text-slate-400 font-bold">
+                                                <Lock className="w-3 h-3" /> Inactive
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                        {u.role !== 'ADMIN' && (
+                                            <>
+                                                {u.isActive ? (
+                                                    <button 
+                                                        onClick={() => handleDeleteUser(u.id)} 
+                                                        className="text-slate-400 hover:text-red-600 transition-colors p-1"
+                                                        title="Deactivate User"
+                                                    >
+                                                        <Trash2 className="w-4 h-4"/>
+                                                    </button>
+                                                ) : (
+                                                    <button 
+                                                        onClick={() => handleRestoreUser(u.id)} 
+                                                        className="text-slate-400 hover:text-green-600 transition-colors p-1"
+                                                        title="Reactivate User"
+                                                    >
+                                                        <RotateCcw className="w-4 h-4"/>
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
