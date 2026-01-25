@@ -46,7 +46,8 @@ export async function POST(req: Request) {
     if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     try {
-        const { username, firstName, lastName, password, role } = await req.json();
+        // 1. Destructure email from the request body
+        const { username, firstName, lastName, email, password, role } = await req.json();
 
         if (!username || !password) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
 
@@ -57,9 +58,10 @@ export async function POST(req: Request) {
 
         const newUser = await db.operator.create({
             data: {
-                name: username, // Login ID
+                name: username,
                 firstName: firstName || "",
                 lastName: lastName || "",
+                email: email || null, // <--- 2. Save the email
                 password: hashedPassword,
                 role: role || 'OPERATOR',
                 isActive: true

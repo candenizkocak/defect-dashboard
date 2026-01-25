@@ -23,6 +23,7 @@ interface User {
     name: string;      // Username
     firstName?: string;
     lastName?: string;
+    email?: string;
     role: string; 
     isActive: boolean; 
     createdAt: string; 
@@ -44,6 +45,7 @@ export default function AdminDashboard() {
   const [newUsername, setNewUsername] = useState("");
   const [newFirstName, setNewFirstName] = useState(""); // New
   const [newLastName, setNewLastName] = useState("");   // New
+  const [newEmail, setNewEmail] = useState("");         // New
   const [newPassword, setNewPassword] = useState("");
 
   // Audit Filter
@@ -129,7 +131,7 @@ export default function AdminDashboard() {
       setSaving(false);
   };
 
-  // 1. CREATE USER (Updated with Names)
+  // 1. CREATE USER (Updated with Names & Email)
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
       const token = localStorage.getItem('cerasight_token');
@@ -142,6 +144,7 @@ export default function AdminDashboard() {
                 username: newUsername, 
                 firstName: newFirstName,
                 lastName: newLastName,
+                email: newEmail,
                 password: newPassword, 
                 role: 'OPERATOR' 
             })
@@ -153,6 +156,7 @@ export default function AdminDashboard() {
               setNewPassword(""); 
               setNewFirstName(""); 
               setNewLastName("");
+              setNewEmail("");
               fetchUsers(token!);
           } else {
               const err = await res.json();
@@ -345,6 +349,11 @@ export default function AdminDashboard() {
                             </div>
                         </div>
                         
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-slate-500">Email Address</label>
+                            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-200 outline-none" placeholder="john@company.com" />
+                        </div>
+
                         <div className="space-y-1">
                             <label className="text-xs font-semibold text-slate-500">Username (Login ID)</label>
                             <input type="text" required value={newUsername} onChange={e => setNewUsername(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-200 outline-none" placeholder="jdoe" />

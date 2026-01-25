@@ -4,15 +4,17 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendPasswordResetEmail(email: string, tempPass: string) {
   if (!process.env.RESEND_API_KEY) {
-    console.warn("⚠️ RESEND_API_KEY missing. Printing password to console instead.");
     console.log(`[EMAIL MOCK] To: ${email} | Temp Password: ${tempPass}`);
     return;
   }
 
   try {
     await resend.emails.send({
-      from: 'security@cerasight.com', // Change this if you have a custom domain
-      to: email,
+      // UPDATE THIS LINE:
+      // You can use 'security', 'admin', 'no-reply', etc.
+      from: 'security@candenizkocak.com', 
+      
+      to: email, // Now you can send to Gmail, Hotmail, etc.
       subject: 'CeraSight: Temporary Password Access',
       html: `
         <div style="font-family: sans-serif; padding: 20px;">
