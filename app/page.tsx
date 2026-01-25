@@ -109,7 +109,7 @@ export default function LandingPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-slate-900 placeholder:text-slate-300 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 outline-none transition-all font-medium"
-                  placeholder="e.g. sysadmin"
+                  placeholder="e.g. Operator-1"
                 />
               </div>
             </div>
