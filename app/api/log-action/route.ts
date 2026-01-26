@@ -5,7 +5,6 @@ export async function POST(req: Request) {
   try {
     const { actionType, operatorName, filename, details } = await req.json();
 
-    // 1. Resolve Identity and Current Session
     const operator = await db.operator.findUnique({ where: { name: operatorName || "Admin" } });
     if (!operator) return NextResponse.json({ error: "Operator not found" }, { status: 404 });
 
@@ -16,7 +15,6 @@ export async function POST(req: Request) {
     
     if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
-    // 2. Resolve Image Context
     let imageId = null;
     if (filename) {
         const img = await db.sourceImage.findFirst({
@@ -27,10 +25,9 @@ export async function POST(req: Request) {
     }
 
     if (!imageId && (actionType === 'MANUAL_ANNOTATION' || actionType === 'DELETE_INTERVENTION')) {
-        return NextResponse.json({ error: "Image not found" }, { status: 404 });
+        return NextResponse.json({ error: "Image context not found" }, { status: 404 });
     }
 
-    // --- A. MANUAL ANNOTATION ---
     if (actionType === 'MANUAL_ANNOTATION') {
         const defectClass = await db.defectClass.upsert({
             where: { label: details.className },
@@ -54,15 +51,19 @@ export async function POST(req: Request) {
         });
     } 
     
-    // --- B. DELETE INTERVENTION (REJECTION) ---
     else if (actionType === 'DELETE_INTERVENTION') {
+        // --- IMPROVED FUZZY LOOKUP ---
+        const x = Math.round(details.box[0]);
+        const y = Math.round(details.box[1]);
+
         const targetDetection = await db.detection.findFirst({
             where: {
                 run: { imageId: imageId! },
                 class: { label: details.defectClass },
                 box: {
-                    x1: Math.round(details.box[0]),
-                    y1: Math.round(details.box[1])
+                    // Look for a box within 3 pixels of the click
+                    x1: { gte: x - 3, lte: x + 3 },
+                    y1: { gte: y - 3, lte: y + 3 }
                 }
             }
         });
@@ -77,6 +78,9 @@ export async function POST(req: Request) {
                     actionType: "REJECTED_FALSE_POSITIVE"
                 }
             });
+            console.log(`✅ Logged rejection for ${details.defectClass} at [${x}, ${y}]`);
+        } else {
+            console.error(`❌ Could not find detection in DB for ${details.defectClass} at [${x}, ${y}]`);
         }
     }
 

@@ -170,10 +170,11 @@ export default function Dashboard() {
     
     if (item.results && item.results.defects[contextMenu.defectIndex]) {
         const target = item.results.defects[contextMenu.defectIndex];
-        // --- FIX: Send Coordinates so the DB can find the exact AI detection to reject ---
+        
+        // Log the action to the DB
         logDbAction('DELETE_INTERVENTION', { 
             defectClass: target.class, 
-            box: target.box 
+            box: target.box // Send the 4-number array [x1, y1, x2, y2]
         });
     }
 
