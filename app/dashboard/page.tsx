@@ -47,7 +47,6 @@ export default function Dashboard() {
         setAuthToken(token);
         setOperatorName(user);
         
-        // FETCH GLOBAL RULES
         fetch('/api/admin/settings')
             .then(res => res.json())
             .then(data => {
@@ -168,10 +167,16 @@ export default function Dashboard() {
   const handleDeleteDefect = () => {
     if (!contextMenu || selectedIndex === -1) return;
     const item = batch[selectedIndex];
+    
     if (item.results && item.results.defects[contextMenu.defectIndex]) {
-        const defectClass = item.results.defects[contextMenu.defectIndex].class;
-        logDbAction('DELETE_INTERVENTION', { defectClass });
+        const target = item.results.defects[contextMenu.defectIndex];
+        // --- FIX: Send Coordinates so the DB can find the exact AI detection to reject ---
+        logDbAction('DELETE_INTERVENTION', { 
+            defectClass: target.class, 
+            box: target.box 
+        });
     }
+
     setBatch(prev => {
         const newBatch = [...prev];
         const item = { ...newBatch[selectedIndex] };
@@ -197,14 +202,21 @@ export default function Dashboard() {
       const { box } = newDefectCandidate;
       const item = batch[selectedIndex];
       if (!item.results) { toast.error("Analyze image first."); setNewDefectCandidate(null); return; }
+      
       logDbAction('MANUAL_ANNOTATION', { className, box });
+      
       const newDefect = { class: className, score: 1.0, box };
       const updatedDefects = [...item.results.defects, newDefect];
+      
       setBatch(prev => {
           const newBatch = [...prev];
-          newBatch[selectedIndex] = { ...newBatch[selectedIndex], results: { ...newBatch[selectedIndex].results!, defects: updatedDefects } };
+          newBatch[selectedIndex] = { 
+            ...newBatch[selectedIndex], 
+            results: { ...newBatch[selectedIndex].results!, defects: updatedDefects } 
+          };
           return newBatch;
       });
+      
       try {
           const newCrops = await generateCrops(item.src, updatedDefects);
           setBatch(prev => {
@@ -357,7 +369,6 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-4">
-             
              <div className="flex items-center gap-3 pl-4 border-r border-gray-200 pr-4">
                 <div className="text-right hidden sm:block">
                     <p className="text-xs font-bold text-slate-700">{operatorName}</p>
@@ -396,37 +407,6 @@ export default function Dashboard() {
         operatorName={operatorName} setOperatorName={() => {}}
         readOnly={true} 
       />
-
-      {isChartModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                 <div>
-                    <h2 className="text-xl font-bold text-slate-800">Global Batch Statistics</h2>
-                    <p className="text-sm text-slate-500">Aggregated from {batch.length} images</p>
-                 </div>
-                 <button onClick={() => setIsChartModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                    <X className="w-6 h-6 text-slate-500" />
-                 </button>
-              </div>
-              <div className="p-8 flex-grow h-[500px]">
-                 <ResponsiveContainer width="100%" height="100%">
-                   <BarChart data={globalStats.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                     <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                     <YAxis axisLine={false} tickLine={false} />
-                     <ReTooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', border: 'none' }} />
-                     <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={60}>
-                        {globalStats.data.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={DEFECT_COLORS[entry.name] || DEFECT_COLORS['Unknown']} />
-                        ))}
-                     </Bar>
-                   </BarChart>
-                 </ResponsiveContainer>
-              </div>
-           </div>
-        </div>
-      )}
 
       {/* MAIN LAYOUT */}
       <main className="max-w-[1600px] mx-auto px-6 py-8 grid grid-cols-12 gap-8">
@@ -470,7 +450,6 @@ export default function Dashboard() {
 
           {activeTab === 'inspection' ? (
             <div className="space-y-6 animate-in fade-in duration-300">
-                {/* NAV */}
                 <div className="bg-white/80 backdrop-blur-sm border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div>
@@ -491,7 +470,6 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        <span className="hidden sm:inline text-xs text-slate-400 mr-2">Use <kbd className="font-mono bg-gray-100 px-1 rounded">←</kbd> <kbd className="font-mono bg-gray-100 px-1 rounded">→</kbd> keys</span>
                         <div className="flex items-center bg-gray-100 rounded-lg p-1">
                         <button disabled={selectedIndex <= 0} onClick={() => setSelectedIndex(i => i - 1)} className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-all text-slate-600 shadow-sm disabled:shadow-none"><ChevronLeft className="w-5 h-5" /></button>
                         <span className="text-xs font-mono text-slate-500 w-16 text-center font-medium">{batch.length > 0 ? `${selectedIndex + 1} / ${batch.length}` : "- / -"}</span>
@@ -508,10 +486,8 @@ export default function Dashboard() {
                     onDrawComplete={handleDrawComplete}
                 />
 
-                {/* Details Panel */}
                 {currentItem?.results && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
-                        {/* Stats */}
                         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-1">
                             <h3 className="text-sm font-semibold text-slate-700 mb-4 uppercase tracking-wider">Defect Breakdown</h3>
                             <div className="h-48 w-full -ml-4">
@@ -531,7 +507,6 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        {/* Crops */}
                         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm col-span-2">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">

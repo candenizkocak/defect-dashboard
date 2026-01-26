@@ -10,95 +10,57 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    
+    const limit = parseInt(searchParams.get('limit') || '12');
     const operatorParam = searchParams.get('operator');
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
     const status = searchParams.get('status');
-    const sortField = searchParams.get('sortField') || 'date'; 
+    const sortField = searchParams.get('sortField') || 'date';
     const sortDir = searchParams.get('sortDir') || 'desc';
 
-    // Build Where Clause
     const whereClause: any = {};
     if (status === 'passed') whereClause.qualityResult = { passed: true };
     if (status === 'failed') whereClause.qualityResult = { passed: false };
     
     if (operatorParam) {
         const names = operatorParam.split(',').filter(Boolean);
-        if (names.length > 0) {
-            whereClause.image = { batch: { session: { operator: { name: { in: names } } } } };
-        }
-    }
-
-    if (startDate || endDate) {
-        whereClause.timing = { startedAt: {} };
-        if (startDate) whereClause.timing.startedAt.gte = new Date(startDate);
-        if (endDate) whereClause.timing.startedAt.lte = new Date(new Date(endDate).setHours(23, 59, 59));
-    }
-
-    // Build Order Clause
-    let orderBy: any = {};
-    if (sortField === 'defects') {
-        orderBy = { detections: { _count: sortDir === 'asc' ? 'asc' : 'desc' } };
-    } else {
-        orderBy = { timing: { startedAt: sortDir === 'asc' ? 'asc' : 'desc' } };
+        whereClause.image = { batch: { session: { operator: { name: { in: names } } } } };
     }
 
     const history = await db.analysisRun.findMany({
         take: limit,
         skip: (page - 1) * limit,
         where: whereClause,
-        orderBy: orderBy,
+        orderBy: sortField === 'defects' 
+            ? { detections: { _count: sortDir as any } } 
+            : { timing: { startedAt: sortDir as any } },
         include: {
             image: {
-                select: {
-                    url: true,
-                    metadata: { select: { filename: true, width: true, height: true } }, 
-                    batch: {
-                        select: {
-                            name: true,
-                            session: { select: { operator: { select: { name: true } } } }
-                        }
-                    },
-                    // --- NEW: Fetch Manual Annotations (Additions) ---
-                    manuals: {
-                        include: { class: true, box: true }
-                    }
+                include: {
+                    metadata: true,
+                    batch: { include: { session: { include: { operator: true } } } },
+                    manuals: { include: { class: true, box: true } }
                 }
             },
             qualityResult: true,
-            detections: {
-                include: { 
-                    class: true,
-                    box: true,
-                    score: true,
-                    // --- NEW: Fetch Interventions (Deletions) ---
-                    intervention: true 
-                }
-            }
+            detections: { include: { class: true, box: true, intervention: true } }
         }
     });
 
     const formatted = history.map(run => {
-        // 1. Process AI Detections (Filter out ones with Interventions)
-        const activeAiDetections = run.detections
-            .filter(d => !d.intervention) // If intervention exists, it was deleted/rejected
+        const aiDefects = run.detections
+            .filter(d => !d.intervention) 
             .map(d => ({
                 class: d.class.label,
-                score: d.score?.score || 1.0,
-                box: d.box ? [d.box.x1, d.box.y1, d.box.x2, d.box.y2] : [0,0,0,0]
+                score: 0.99,
+                box: [d.box!.x1, d.box!.y1, d.box!.x2, d.box!.y2]
             }));
 
-        // 2. Process Manual Annotations (Additions)
-        const manualDetections = run.image.manuals.map(m => ({
+        const manualDefects = run.image.manuals.map(m => ({
             class: m.class.label,
-            score: 1.0, // Manual is always 100% confidence
-            box: m.box ? [m.box.x1, m.box.y1, m.box.x2, m.box.y2] : [0,0,0,0]
+            score: 1.0,
+            box: [m.box!.x1, m.box!.y1, m.box!.x2, m.box!.y2]
         }));
 
-        // 3. Merge Lists
-        const finalDefects = [...activeAiDetections, ...manualDetections];
+        const allDefects = [...aiDefects, ...manualDefects];
 
         return {
             id: run.id,
@@ -106,20 +68,17 @@ export async function GET(req: Request) {
             filename: run.image.metadata?.filename || 'Unknown',
             timestamp: run.timing?.startedAt || new Date(),
             operator: run.image.batch.session.operator.name,
-            // Recalculate status based on current valid defect count? 
-            // For now, keep original status, or you could re-evaluate against qualityRule here.
-            status: run.qualityResult?.passed ? 'PASS' : 'FAIL', 
-            defectCount: finalDefects.length, // Update count to match reality
+            status: run.qualityResult?.passed ? 'PASS' : 'FAIL',
+            defectCount: allDefects.length,
             results: {
                 width: run.image.metadata?.width || 1000,
                 height: run.image.metadata?.height || 1000,
-                defects: finalDefects
+                defects: allDefects
             }
         };
     });
 
     return NextResponse.json(formatted);
-
   } catch (error) {
     console.error("Archive API Error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
